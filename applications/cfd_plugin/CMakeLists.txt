@@ -108,13 +108,15 @@ if(${SUNDIALS_VERSION} EQUAL "5")
   endif()
   #target_include_directories(zerork_cfd_plugin_gpu PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 
-  set_source_files_properties(zerork_reactor_manager.cpp TARGET_DIRECTORY zerork_cfd_plugin_gpu PROPERTIES LANGUAGE HIP)
-  set_source_files_properties(solver_cvode.cpp TARGET_DIRECTORY zerork_cfd_plugin_gpu PROPERTIES LANGUAGE HIP)
+  set_source_files_properties(zerork_reactor_manager.cpp TARGET_DIRECTORY zerork_cfd_plugin_gpu PROPERTIES LANGUAGE CXX)
+  set_source_files_properties(solver_cvode.cpp TARGET_DIRECTORY zerork_cfd_plugin_gpu PROPERTIES LANGUAGE CXX)
 
   #target_link_libraries(zerork_cfd_plugin_gpu zerork_cuda zerork zerorkutilities superlu spify
   #                      sundials_nveccuda sundials_cvode sundials_nvecserial cublas cusolver cudart)
+  find_package(hip CONFIG REQUIRED)
+  message(WARNING "hip_DIR: ${hip_DIR}")
   target_link_libraries(zerork_cfd_plugin_gpu zerork_cuda zerork zerorkutilities superlu spify
-                        sundials_nvechip sundials_cvode sundials_nvecserial hipblas hipsparse hipsolver hip-lang::device)
+                        sundials_nvechip sundials_cvode sundials_nvecserial hipblas hipsparse hipsolver hip::device)
   if(${ZERORK_ENABLE_SUNDIALS_LAPACK})
     target_link_libraries(zerork_cfd_plugin_gpu sundials_sunlinsollapackdense)
   endif()
