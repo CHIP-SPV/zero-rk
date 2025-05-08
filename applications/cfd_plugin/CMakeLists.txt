@@ -119,7 +119,7 @@ if(${SUNDIALS_VERSION} EQUAL "5")
 
   find_package(hip CONFIG REQUIRED)
   target_link_libraries(zerork_cfd_plugin_gpu zerork_cuda zerork zerorkutilities superlu spify
-                        sundials_nveccuda sundials_cvode sundials_nvecserial cublas cusolver cudart)
+                        sundials_nvechip sundials_cvode sundials_nvecserial hipblas hipsparse hipsolver hip::device)
   if(${ZERORK_ENABLE_SUNDIALS_LAPACK})
     target_link_libraries(zerork_cfd_plugin_gpu sundials_sunlinsollapackdense)
   endif()
