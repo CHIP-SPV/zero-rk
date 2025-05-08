@@ -109,8 +109,12 @@ if(${SUNDIALS_VERSION} EQUAL "5")
     target_compile_definitions(zerork_cfd_plugin_gpu PRIVATE ZERORK_HAVE_RMM_DEVICE_VECTOR)
   endif()
 
+  #target_link_libraries(zerork_cfd_plugin_gpu zerork_cuda zerork zerorkutilities superlu spify
+  #                      sundials_nveccuda sundials_cvode sundials_nvecserial cublas cusolver cudart)
+  find_package(hip CONFIG REQUIRED)
+  message(WARNING "hip_DIR: ${hip_DIR}")
   target_link_libraries(zerork_cfd_plugin_gpu zerork_cuda zerork zerorkutilities superlu spify
-                        sundials_nvechip sundials_cvode sundials_nvecserial hipblas hipsparse hipsolver)
+                        sundials_nvechip sundials_cvode sundials_nvecserial hipblas hipsparse hipsolver hip::device)
   if(${ZERORK_ENABLE_SUNDIALS_LAPACK})
     target_link_libraries(zerork_cfd_plugin_gpu sundials_sunlinsollapackdense)
   endif()
