@@ -41,7 +41,7 @@ if(NOT EXISTS ${superlu_lib_dir})
   endif()
 endif()
 
-add_library(superlu STATIC IMPORTED GLOBAL)
+add_library(superlu SHARED IMPORTED GLOBAL)
 set_target_properties(superlu PROPERTIES
   IMPORTED_LOCATION ${superlu_lib_dir}/${CMAKE_STATIC_LIBRARY_PREFIX}superlu${CMAKE_STATIC_LIBRARY_SUFFIX}
   INTERFACE_INCLUDE_DIRECTORIES ${superlu_prefix}/include)

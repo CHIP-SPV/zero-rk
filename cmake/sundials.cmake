@@ -70,7 +70,7 @@ if(NOT EXISTS ${sundials_lib_dir})
 endif()
 
 foreach(LIBRARY ${sundials_libs})
-  add_library(sundials_${LIBRARY} STATIC IMPORTED GLOBAL)
+  add_library(sundials_${LIBRARY} SHARED IMPORTED GLOBAL)
   set_target_properties(sundials_${LIBRARY} PROPERTIES
   IMPORTED_LOCATION ${sundials_lib_dir}/${CMAKE_STATIC_LIBRARY_PREFIX}sundials_${LIBRARY}${CMAKE_STATIC_LIBRARY_SUFFIX}
   INTERFACE_INCLUDE_DIRECTORIES ${sundials_prefix}/include

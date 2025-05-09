@@ -42,7 +42,7 @@ if(NOT EXISTS ${magma_lib_dir})
   endif()
 endif()
 
-add_library(magma STATIC IMPORTED GLOBAL)
+add_library(magma SHARED IMPORTED GLOBAL)
 set_target_properties(magma PROPERTIES
   IMPORTED_LOCATION ${magma_lib_dir}/${CMAKE_STATIC_LIBRARY_PREFIX}magma${CMAKE_STATIC_LIBRARY_SUFFIX}
   INTERFACE_INCLUDE_DIRECTORIES "${magma_prefix}/include"
