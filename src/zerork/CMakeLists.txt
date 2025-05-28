@@ -53,7 +53,8 @@ target_include_directories(zerork_cuda PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_
                                               $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../>
                                               $<INSTALL_INTERFACE:include>
                                        PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-                                               ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+                                               /space/pvelesko/install/HIP/rocThrust/main/include
+                                               /space/pvelesko/install/HIP/rocPRIM/2025.04.22/include)
 
 set(public_headers_cuda atomicMassDB.h constants.h
    constants_api.h zerork_cuda_defs.h element.h
