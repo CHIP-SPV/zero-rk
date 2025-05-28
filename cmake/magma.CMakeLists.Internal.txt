@@ -457,7 +457,7 @@ set( CMAKE_LIBRARY_OUTPUT_DIRECTORY lib )
 if (MAGMA_ENABLE_CUDA)
   include( ${CMAKE_SOURCE_DIR}/CMake.src.cuda )
 else()
-  include( ${CMAKE_SOURCE_DIR}/CMake.src.hip )
+  include( ${CMAKE_SOURCE_DIR}/CMake.src.cpp )
 endif()
 
 # ----------------------------------------
