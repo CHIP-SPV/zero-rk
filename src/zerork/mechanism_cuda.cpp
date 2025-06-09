@@ -4,6 +4,7 @@
 #include "nasa_poly_cuda.h"
 #include "rate_const_cuda.h"
 #include "perf_net_cuda.h"
+#include <new>
 #include <cassert>
 
 #include <thrust/device_vector.h>
