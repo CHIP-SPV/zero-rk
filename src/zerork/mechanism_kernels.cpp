@@ -142,15 +142,23 @@ void __global__ kernel_getMassIntEnergyFromTY_mr_dev
 {
   int tid = blockIdx.x*blockDim.x + threadIdx.x;
   int reactorid = blockIdx.y*blockDim.y + threadIdx.y;
+  extern __shared__ double values[];
+  int valIdx = blockDim.y*threadIdx.x+threadIdx.y;
+
   if(tid < nSpc)
   {
       if(reactorid < nReactors)
       {
-            extern __shared__ double values[];
-            int valIdx = blockDim.y*threadIdx.x+threadIdx.y;
             u_spc_dev[nReactors*tid+reactorid]  = (u_spc_dev[nReactors*tid+reactorid] - 1)*RuInvMolWt_dev[tid]*T_dev[reactorid];
             values[valIdx] = u_spc_dev[nReactors*tid+reactorid]*y_dev[nReactors*tid+reactorid];
+      }
+  }
             __syncthreads();
+
+  if(tid < nSpc)
+  {
+      if(reactorid < nReactors)
+      {
             if(threadIdx.x == 0)
             {
                 double accum = 0.0;
