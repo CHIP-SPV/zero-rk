@@ -113,10 +113,11 @@ __global__ void scatterAdd_gpu_atomic_global_8op(const int nOps,
 				      double dest[])
 {
   int tid = blockDim.x*blockIdx.x+threadIdx.x;
+  __shared__ int threadSrcId[8];
+  int threadDestId;
+
   if(tid < nData)
   {
-      __shared__ int threadSrcId[8];
-      int threadDestId;
   
       int counter = threadIdx.x;
       int stride = std::min((unsigned int) blockDim.x,nData-blockDim.x*blockIdx.x);
@@ -126,9 +127,10 @@ __global__ void scatterAdd_gpu_atomic_global_8op(const int nOps,
           counter += stride;
       }
       threadDestId = destId[8*blockIdx.y]*nData+tid;
-
+  }
       __syncthreads();
-
+  if(tid < nData)
+  {
       double val = src[threadSrcId[0]+tid]+
                    src[threadSrcId[1]+tid]+
                    src[threadSrcId[2]+tid]+
@@ -151,10 +153,11 @@ __global__ void scatterAdd_gpu_atomic_global_16op(const int nOps,
 				      double dest[])
 {
   int tid = blockDim.x*blockIdx.x+threadIdx.x;
+  __shared__ int threadSrcId[16];
+  int threadDestId;
+
   if(tid < nData)
   {
-      __shared__ int threadSrcId[16];
-      int threadDestId;
 
       int counter = threadIdx.x;
       int stride = std::min((unsigned int) blockDim.x,nData-blockDim.x*blockIdx.x);
@@ -164,9 +167,10 @@ __global__ void scatterAdd_gpu_atomic_global_16op(const int nOps,
           counter += stride;
       }
       threadDestId = destId[16*blockIdx.y]*nData+tid;
-
+  }
       __syncthreads();
-
+  if(tid < nData)
+  {
       double val = src[threadSrcId[0 ]+tid]+
                    src[threadSrcId[1 ]+tid]+
                    src[threadSrcId[2 ]+tid]+
@@ -197,10 +201,11 @@ __global__ void scatterAdd_gpu_atomic_global_32op(const int nOps,
 				      double dest[])
 {
   int tid = blockDim.x*blockIdx.x+threadIdx.x;
+  __shared__ int threadSrcId[32];
+  int threadDestId;
+
   if(tid < nData)
   {
-      __shared__ int threadSrcId[32];
-      int threadDestId;
   
       int counter = threadIdx.x;
       int stride = std::min((unsigned int) blockDim.x,nData-blockDim.x*blockIdx.x);
@@ -210,8 +215,10 @@ __global__ void scatterAdd_gpu_atomic_global_32op(const int nOps,
           counter += stride;
       }
       threadDestId = destId[32*blockIdx.y]*nData+tid;
-
+  }
       __syncthreads();
+  if(tid < nData)
+  {
  
       double val = src[threadSrcId[0 ]+tid]+
                    src[threadSrcId[1 ]+tid]+
@@ -259,10 +266,11 @@ __global__ void scatterAdd_gpu_atomic_global_64op(const int nOps,
 				      double dest[])
 {
   int tid = blockDim.x*blockIdx.x+threadIdx.x;
+  __shared__ int threadSrcId[64];
+  int threadDestId;
+
   if(tid < nData)
   {
-      __shared__ int threadSrcId[64];
-      int threadDestId;
 
       int counter = threadIdx.x;
       int stride = std::min((unsigned int) blockDim.x,nData-blockDim.x*blockIdx.x);
@@ -272,8 +280,10 @@ __global__ void scatterAdd_gpu_atomic_global_64op(const int nOps,
           counter += stride;
       }
       threadDestId = destId[64*blockIdx.y]*nData+tid;
-
+  }
       __syncthreads();
+  if(tid < nData)
+  {
 
       double val = 0;
       #pragma unroll 32
@@ -293,11 +303,11 @@ __global__ void scatterAdd_gpu_atomic_global_128op(const int nOps,
 				      double dest[])
 {
   int tid = blockDim.x*blockIdx.x+threadIdx.x;
+  __shared__ int threadSrcId[128];
+  int threadDestId;
+
   if(tid < nData)
   {
-      __shared__ int threadSrcId[128];
-      int threadDestId;
-
       int counter = threadIdx.x;
       int stride = std::min((unsigned int) blockDim.x,nData-blockDim.x*blockIdx.x);
       while(counter < 128)
@@ -306,9 +316,10 @@ __global__ void scatterAdd_gpu_atomic_global_128op(const int nOps,
           counter += stride;
       }
       threadDestId = destId[128*blockIdx.y]*nData+tid;
-
+  }
       __syncthreads();
-
+  if(tid < nData)
+  {
       double val = 0;
       #pragma unroll 32
       for (size_t idx = 0; idx < 128; ++idx)
