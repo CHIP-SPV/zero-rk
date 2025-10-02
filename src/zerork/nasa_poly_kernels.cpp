@@ -13,12 +13,13 @@ void __global__ cuda_get_G_RT_mr
 {
   int reactorid = blockIdx.x*blockDim.x + threadIdx.x;
   int speciesid = blockIdx.y;
+  int coefAddr = LDA_THERMO_POLY_D5R2*speciesid;
+  __shared__ double coeffShr[16];
+
   if(speciesid < nSpc)
   {
       if(reactorid < nReactors)
       {
-          int coefAddr = LDA_THERMO_POLY_D5R2*speciesid;
-          __shared__ double coeffShr[16];
 
           int counter = threadIdx.x;
           int stride = std::min((unsigned int) blockDim.x,nReactors-blockDim.x*blockIdx.x);
@@ -27,7 +28,13 @@ void __global__ cuda_get_G_RT_mr
               coeffShr[counter]=thermoCoeff_dev[coefAddr+counter];
               counter += stride;
           }
+      }
+  }
           __syncthreads();
+  if(speciesid < nSpc)
+  {
+      if(reactorid < nReactors)
+      {
 
           double Tmid,g1,g2;
           double T = T_dev[reactorid];
@@ -85,12 +92,13 @@ void __global__ cuda_get_H_RT_mr
 {
   int reactorid = blockIdx.x*blockDim.x + threadIdx.x;
   int speciesid = blockIdx.y;
+  int coefAddr = LDA_THERMO_POLY_D5R2*speciesid;
+  __shared__ double coeffShr[16];
+
   if(speciesid < nSpc)
   {
       if(reactorid < nReactors)
       {
-          int coefAddr = LDA_THERMO_POLY_D5R2*speciesid;
-          __shared__ double coeffShr[16];
 
           int counter = threadIdx.x;
           int stride = std::min((unsigned int) blockDim.x,nReactors-blockDim.x*blockIdx.x);
@@ -99,8 +107,13 @@ void __global__ cuda_get_H_RT_mr
               coeffShr[counter]=thermoCoeff_dev[coefAddr+counter];
               counter += stride;
           }
+      }
+  }
           __syncthreads();
-
+  if(speciesid < nSpc)
+  {
+      if(reactorid < nReactors)
+      {
           double Tmid,h1,h2;
           double T = T_dev[reactorid];
           double invT=1.0/T;
@@ -147,12 +160,13 @@ void __global__ cuda_get_Cp_R_mr
 {
   int reactorid = blockIdx.x*blockDim.x + threadIdx.x;
   int speciesid = blockIdx.y;
+  int coefAddr = LDA_THERMO_POLY_D5R2*speciesid;
+  __shared__ double coeffShr[16];
+
   if(speciesid < nSpc)
   {
       if(reactorid < nReactors)
       {
-          int coefAddr = LDA_THERMO_POLY_D5R2*speciesid;
-          __shared__ double coeffShr[16];
 
           int counter = threadIdx.x;
           int stride = std::min((unsigned int) blockDim.x,nReactors-blockDim.x*blockIdx.x);
@@ -161,7 +175,13 @@ void __global__ cuda_get_Cp_R_mr
               coeffShr[counter]=thermoCoeff_dev[coefAddr+counter];
               counter += stride;
           }
+      }
+  }
           __syncthreads();
+  if(speciesid < nSpc)
+  {
+      if(reactorid < nReactors)
+      {
 
           double Tmid,cp1,cp2;
           double T = T_dev[reactorid];
