@@ -36,13 +36,19 @@ if(ZERORK_ENABLE_SUNDIALS_LAPACK)
 endif()
 
 if(ENABLE_MPI)
-  add_mpi_library(zerork_cfd_plugin SHARED ${COMMON_SRCS} zerork_cfd_plugin.cpp)
+  add_mpi_library(zerork_cfd_plugin STATIC zerork_cfd_plugin.cpp ${COMMON_SRCS})
   target_compile_definitions(zerork_cfd_plugin PRIVATE USE_MPI)
   add_mpi_executable(zerork_cfd_plugin_tester.x zerork_cfd_plugin_tester.cpp ZeroRKCFDPluginTesterIFP.cpp)
+  add_mpi_executable(zerork_random_sampling_test.x zerork_random_sampling_test.cpp)
+  add_mpi_executable(zerork_random_reactors_test.x zerork_random_reactors_test.cpp)  
   target_compile_definitions(zerork_cfd_plugin_tester.x PRIVATE USE_MPI)
+  target_compile_definitions(zerork_random_sampling_test.x PRIVATE USE_MPI)
+  target_compile_definitions(zerork_random_reactors_test.x PRIVATE USE_MPI)
 else()
-  add_library(zerork_cfd_plugin SHARED ${COMMON_SRCS} zerork_cfd_plugin.cpp)
+  add_library(zerork_cfd_plugin STATIC zerork_cfd_plugin.cpp ${COMMON_SRCS})
   add_executable(zerork_cfd_plugin_tester.x zerork_cfd_plugin_tester.cpp ZeroRKCFDPluginTesterIFP.cpp)
+  add_executable(zerork_random_sampling_test.x zerork_random_sampling_test.cpp)
+  add_executable(zerork_random_reactors_test.x zerork_random_reactors_test.cpp)  
 endif()
 
 target_link_libraries(zerork_cfd_plugin zerork zerorkutilities superlu spify sundials_cvode
@@ -55,14 +61,20 @@ if(NOT WIN32 AND NOT APPLE)
   target_link_options(zerork_cfd_plugin PRIVATE -Wl,-Bsymbolic-functions -Wl,-Bsymbolic)
 endif()
 target_link_libraries(zerork_cfd_plugin_tester.x zerork_cfd_plugin)
+target_link_libraries(zerork_random_sampling_test.x zerork_cfd_plugin)
+target_link_libraries(zerork_random_reactors_test.x zerork_cfd_plugin)
 
 if(ENABLE_OPENMP)
   target_compile_definitions(zerork_cfd_plugin_tester.x PRIVATE USE_OMP)
   target_link_libraries(zerork_cfd_plugin_tester.x OpenMP::OpenMP_CXX)
+  target_compile_definitions(zerork_random_sampling_test.x PRIVATE USE_OMP)
+  target_link_libraries(zerork_random_sampling_test.x OpenMP::OpenMP_CXX)
+  target_compile_definitions(zerork_random_reactors_test.x PRIVATE USE_OMP)
+  target_link_libraries(zerork_random_reactors_test.x OpenMP::OpenMP_CXX)
 endif()
 
 set(SPIFY_PLUGIN_TARGETS "zerork_cfd_plugin")
-set(SPIFY_TESTER_TARGETS "zerork_cfd_plugin_tester.x")
+set(SPIFY_TESTER_TARGETS "zerork_cfd_plugin_tester.x;zerork_random_sampling_test.x;zerork_random_reactors_test.x")
 
 GENERATE_EXPORT_HEADER(zerork_cfd_plugin
                        BASE_NAME zerork_cfd_plugin
@@ -84,6 +96,10 @@ install(TARGETS zerork_cfd_plugin PUBLIC_HEADER DESTINATION include
         ARCHIVE DESTINATION lib)
 install(TARGETS zerork_cfd_plugin_tester.x
         RUNTIME DESTINATION bin)
+install(TARGETS zerork_random_sampling_test.x
+        RUNTIME DESTINATION bin)
+install(TARGETS zerork_random_reactors_test.x
+        RUNTIME DESTINATION bin)
 
 if(ENABLE_GPU)
 if(${SUNDIALS_VERSION} EQUAL "5")
@@ -100,13 +116,19 @@ if(${SUNDIALS_VERSION} EQUAL "5")
   endif()
 
   if(ENABLE_MPI)
-    add_mpi_library(zerork_cfd_plugin_gpu SHARED ${COMMON_SRCS} ${GPU_SRCS} zerork_cfd_plugin.cpp)
+    add_mpi_library(zerork_cfd_plugin_gpu STATIC zerork_cfd_plugin.cpp ${COMMON_SRCS} ${GPU_SRCS})
     add_mpi_executable(zerork_cfd_plugin_tester_gpu.x zerork_cfd_plugin_tester.cpp ZeroRKCFDPluginTesterIFP.cpp)
+    add_mpi_executable(zerork_random_sampling_test_gpu.x zerork_random_sampling_test.cpp)
+    add_mpi_executable(zerork_random_reactors_test_gpu.x zerork_random_reactors_test.cpp)    
     target_compile_definitions(zerork_cfd_plugin_gpu PRIVATE USE_MPI)
     target_compile_definitions(zerork_cfd_plugin_tester_gpu.x PRIVATE USE_MPI)
+    target_compile_definitions(zerork_random_sampling_test_gpu.x PRIVATE USE_MPI)
+    target_compile_definitions(zerork_random_reactors_test_gpu.x PRIVATE USE_MPI)        
   else()
-    add_library(zerork_cfd_plugin_gpu SHARED ${COMMON_SRCS} ${GPU_SRCS} zerork_cfd_plugin.cpp)
+    add_library(zerork_cfd_plugin_gpu STATIC ${COMMON_SRCS} ${GPU_SRCS} zerork_cfd_plugin.cpp)
     add_executable(zerork_cfd_plugin_tester_gpu.x zerork_cfd_plugin_tester.cpp ZeroRKCFDPluginTesterIFP.cpp)
+    add_executable(zerork_random_sampling_test_gpu.x zerork_random_sampling_test.cpp)
+    add_executable(zerork_random_reactors_test_gpu.x zerork_random_reactors_test.cpp)    
   endif()
   target_compile_definitions(zerork_cfd_plugin_gpu PRIVATE ZERORK_GPU)
   target_compile_definitions(zerork_cfd_plugin_tester_gpu.x PRIVATE ZERORK_GPU)
@@ -130,11 +152,16 @@ if(${SUNDIALS_VERSION} EQUAL "5")
 
   target_link_options(zerork_cfd_plugin_gpu PRIVATE -Wl,-Bsymbolic-functions -Wl,-Bsymbolic)
   target_link_libraries(zerork_cfd_plugin_tester_gpu.x zerork_cfd_plugin_gpu)
+  target_link_libraries(zerork_random_sampling_test_gpu.x zerork_cfd_plugin_gpu)
+  target_link_libraries(zerork_random_reactors_test_gpu.x zerork_cfd_plugin_gpu)  
   if(DEFINED ENV{COMPILERRT_PATH_X86_64})
       target_link_libraries(zerork_cfd_plugin_tester_gpu.x $ENV{COMPILERRT_PATH_X86_64}/libclang_rt.builtins-x86_64.a)
+      target_link_libraries(zerork_random_sampling_test_gpu.x $ENV{COMPILERRT_PATH_X86_64}/libclang_rt.builtins-x86_64.a)
+      target_link_libraries(zerork_random_reactors_test_gpu.x $ENV{COMPILERRT_PATH_X86_64}/libclang_rt.builtins-x86_64.a)	      
   endif()
   set(SPIFY_PLUGIN_TARGETS "${SPIFY_PLUGIN_TARGETS};zerork_cfd_plugin_gpu")
-  set(SPIFY_TESTER_TARGETS "${SPIFY_TESTER_TARGETS};zerork_cfd_plugin_tester_gpu.x")
+
+  set(SPIFY_TESTER_TARGETS "${SPIFY_TESTER_TARGETS};zerork_cfd_plugin_tester_gpu.x;zerork_random_sampling_test_gpu.x;zerork_random_reactors_test_gpu.x")
   set_target_properties(zerork_cfd_plugin_gpu PROPERTIES PUBLIC_HEADER
                         "zerork_cfd_plugin.h;${CMAKE_CURRENT_BINARY_DIR}/zerork_cfd_plugin_exports.h")
 
@@ -147,6 +174,10 @@ if(${SUNDIALS_VERSION} EQUAL "5")
   install(TARGETS zerork_cfd_plugin_gpu LIBRARY DESTINATION lib PUBLIC_HEADER DESTINATION include
           RUNTIME DESTINATION bin)
   install(TARGETS zerork_cfd_plugin_tester_gpu.x
+          RUNTIME DESTINATION bin)
+  install(TARGETS zerork_random_sampling_test_gpu.x
+          RUNTIME DESTINATION bin)
+  install(TARGETS zerork_random_reactors_test_gpu.x
           RUNTIME DESTINATION bin)
 else()
   message(NOTICE "cfd_plugin_gpu disabled for SUNDIALS_VERSION!=5")

@@ -30,7 +30,8 @@ void __global__ cuda_get_G_RT_mr
           }
       }
   }
-          __syncthreads();
+  __syncthreads();
+  
   if(speciesid < nSpc)
   {
       if(reactorid < nReactors)
@@ -109,7 +110,9 @@ void __global__ cuda_get_H_RT_mr
           }
       }
   }
-          __syncthreads();
+
+  __syncthreads();
+  
   if(speciesid < nSpc)
   {
       if(reactorid < nReactors)

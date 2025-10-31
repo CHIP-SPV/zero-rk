@@ -57,17 +57,27 @@ void __global__ kernel_meanCpMass_mr
 {
     int reactorid = blockIdx.x*blockDim.x + threadIdx.x;
     int tid = blockIdx.y*blockDim.y + threadIdx.y;
+
+    extern __shared__ double values[];
+    int valIdx = blockDim.x*threadIdx.y+threadIdx.x;
+
     if(tid < nSpc)
     {
         if(reactorid < nReactors)
         {
-            extern __shared__ double values[];
-            int valIdx = blockDim.x*threadIdx.y+threadIdx.x;
             values[valIdx] = Cp_dev[nReactors*tid+reactorid];
             values[valIdx] = values[valIdx]*RuInvMolWt_dev[tid];
             Cp_dev[nReactors*tid+reactorid] = values[valIdx];
             values[valIdx] *= y_dev[nReactors*tid+reactorid];
-            __syncthreads();
+	}
+    }
+    
+    __syncthreads();
+
+    if(tid < nSpc)
+    {
+        if(reactorid < nReactors)
+        {
             if(threadIdx.y == 0)
             {
                 double accum = 0.0;
@@ -153,7 +163,8 @@ void __global__ kernel_getMassIntEnergyFromTY_mr_dev
             values[valIdx] = u_spc_dev[nReactors*tid+reactorid]*y_dev[nReactors*tid+reactorid];
       }
   }
-            __syncthreads();
+
+  __syncthreads();
 
   if(tid < nSpc)
   {
@@ -186,15 +197,25 @@ void __global__ kernel_getMassEnthalpyFromTY_mr_dev
 {
   int tid = blockIdx.x*blockDim.x + threadIdx.x;
   int reactorid = blockIdx.y*blockDim.y + threadIdx.y;
+
+  extern __shared__ double values[];
+  int valIdx = blockDim.y*threadIdx.x+threadIdx.y;
+  
   if(tid < nSpc)
   {
       if(reactorid < nReactors)
       {
-            extern __shared__ double values[];
-            int valIdx = blockDim.y*threadIdx.x+threadIdx.y;
             h_spc_dev[nReactors*tid+reactorid]  = h_spc_dev[nReactors*tid+reactorid]*RuInvMolWt_dev[tid]*T_dev[reactorid];
             values[valIdx] = h_spc_dev[nReactors*tid+reactorid]*y_dev[nReactors*tid+reactorid];
-            __syncthreads();
+      }
+  }
+  
+  __syncthreads();
+
+  if(tid < nSpc)
+  {
+      if(reactorid < nReactors)
+      {
             if(threadIdx.x == 0)
             {
                 double accum = 0.0;
@@ -220,15 +241,25 @@ void __global__ kernel_getMolWtMixFromY
 {
   int reactorid = blockIdx.x*blockDim.x + threadIdx.x;
   int tid = blockIdx.y*blockDim.y + threadIdx.y;
+  
+  extern __shared__ double values[];
+  int valIdx = blockDim.x*threadIdx.y+threadIdx.x;
+  
   if(tid < nSpc)
   {
       if(reactorid < nReactors)
       {
-            extern __shared__ double values[];
-            int valIdx = blockDim.x*threadIdx.y+threadIdx.x;
             values[valIdx] = y_dev[nReactors*tid+reactorid];
             values[valIdx] = values[valIdx]*invMolWt_dev[tid];
-            __syncthreads();
+      }
+  }
+  
+  __syncthreads();
+  
+  if(tid < nSpc)
+  {
+      if(reactorid < nReactors)
+      {
             if(threadIdx.y == 0)
             {
                 double accum = 0.0;
