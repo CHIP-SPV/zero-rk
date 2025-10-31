@@ -128,7 +128,8 @@ __global__ void scatterAdd_gpu_atomic_global_8op(const int nOps,
       }
       threadDestId = destId[8*blockIdx.y]*nData+tid;
   }
-      __syncthreads();
+  __syncthreads();
+  
   if(tid < nData)
   {
       double val = src[threadSrcId[0]+tid]+
@@ -168,7 +169,8 @@ __global__ void scatterAdd_gpu_atomic_global_16op(const int nOps,
       }
       threadDestId = destId[16*blockIdx.y]*nData+tid;
   }
-      __syncthreads();
+  __syncthreads();
+  
   if(tid < nData)
   {
       double val = src[threadSrcId[0 ]+tid]+
@@ -216,7 +218,8 @@ __global__ void scatterAdd_gpu_atomic_global_32op(const int nOps,
       }
       threadDestId = destId[32*blockIdx.y]*nData+tid;
   }
-      __syncthreads();
+  __syncthreads();
+  
   if(tid < nData)
   {
  
@@ -281,7 +284,8 @@ __global__ void scatterAdd_gpu_atomic_global_64op(const int nOps,
       }
       threadDestId = destId[64*blockIdx.y]*nData+tid;
   }
-      __syncthreads();
+  __syncthreads();
+  
   if(tid < nData)
   {
 
@@ -339,13 +343,14 @@ __global__ void scatterAdd_gpu_atomic_global_fused(
 				      double dest[])
 {
   int tid = blockDim.x*blockIdx.x+threadIdx.x;
-  if(tid < nData)
-  {
-    int nAdd = 128;
-    __shared__ int threadSrcId[128];
-    for(int j = 7; j >= 0; j--) {
-      int nOpsCurr = (nOps[j] - nOps[j+1])/nAdd;
-      int threadDestId;
+  int nAdd = 128;
+  __shared__ int threadSrcId[128];
+  int nOpsCurr;
+  int threadDestId;
+  
+  for(int j = 7; j >= 0; j--) {
+    if(tid < nData) {
+      nOpsCurr = (nOps[j] - nOps[j+1])/nAdd;
 
       if(blockIdx.y < nOpsCurr) {
         const int* srcIdCurr = &srcId[nOps[j+1]];
@@ -360,9 +365,11 @@ __global__ void scatterAdd_gpu_atomic_global_fused(
         }
         threadDestId = destIdCurr[nAdd*blockIdx.y]*nData+tid;
       }
+    }
 
-      __syncthreads();
+    __syncthreads();
 
+    if(tid < nData) {
       if(blockIdx.y < nOpsCurr) {
         double val = 0.0;
         for(int k = 0; k < nAdd; k++) {
@@ -370,7 +377,11 @@ __global__ void scatterAdd_gpu_atomic_global_fused(
         }
         atomicAdd(&dest[threadDestId],val);
       }
-      __syncthreads();
+    }
+
+    __syncthreads();
+
+    if(tid < nData) {
       nAdd /= 2;
     }
   }
@@ -388,38 +399,45 @@ __global__ void multScatterAdd_gpu_atomic_global_fused(
 				      double dest[])
 {
   int tid = blockDim.x*blockIdx.x+threadIdx.x;
-  if(tid < nData)
-  {
-    int nAdd = 128;
-    __shared__ int threadSrcId[128];
-    for(int j = 7; j >= 0; j--) {
-      int nOpsCurr = (nOps[j] - nOps[j+1])/nAdd;
-      int threadDestId;
-
+  int nAdd = 128;
+  __shared__ int threadSrcId[128];
+  int nOpsCurr;
+  int threadDestId;
+  
+  for(int j = 7; j >= 0; j--) {
+    if(tid < nData) {      
+      nOpsCurr = (nOps[j] - nOps[j+1])/nAdd;
+      
       if(blockIdx.y < nOpsCurr) {
-        const int* srcIdCurr = &srcId[nOps[j+1]];
-        const int* destIdCurr = &destId[nOps[j+1]];
-
-        int counter = threadIdx.x;
-        int stride = std::min((unsigned int) blockDim.x,nData-blockDim.x*blockIdx.x);
-        while(counter < nAdd)
-        {
-            threadSrcId[counter] = srcIdCurr[nAdd*blockIdx.y+counter];
-            counter += stride;
-        }
-        threadDestId = destIdCurr[nAdd*blockIdx.y]*nData+tid;
+	const int* srcIdCurr = &srcId[nOps[j+1]];
+	const int* destIdCurr = &destId[nOps[j+1]];
+	
+	int counter = threadIdx.x;
+	int stride = std::min((unsigned int) blockDim.x,nData-blockDim.x*blockIdx.x);
+	while(counter < nAdd)
+	  {
+	    threadSrcId[counter] = srcIdCurr[nAdd*blockIdx.y+counter];
+	    counter += stride;
+	  }
+	threadDestId = destIdCurr[nAdd*blockIdx.y]*nData+tid;
       }
-
-      __syncthreads();
-
+    }
+    
+    __syncthreads();
+    
+    if(tid < nData) {     
       if(blockIdx.y < nOpsCurr) {
-        double val = 0.0;
-        for(int k = 0; k < nAdd; k++) {
-          val += srcMult[nOps[j+1]+nAdd*blockIdx.y+k]*src[threadSrcId[k]*nData+tid];
-        }
-        atomicAdd(&dest[threadDestId],val);
+	double val = 0.0;
+	for(int k = 0; k < nAdd; k++) {
+	  val += srcMult[nOps[j+1]+nAdd*blockIdx.y+k]*src[threadSrcId[k]*nData+tid];
+	}
+	atomicAdd(&dest[threadDestId],val);
       }
-      __syncthreads();
+    }
+    
+    __syncthreads();
+    
+    if(tid < nData) {
       nAdd /= 2;
     }
   }
