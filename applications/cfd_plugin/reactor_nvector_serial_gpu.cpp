@@ -1191,8 +1191,8 @@ void __global__ RNSC_SparseToDenseDevice(
   }
 }
 
-int ReactorNVectorSerialGpu::SparseToDenseDevice(const thrust::device_vector<int>& row_idxs, const thrust::device_vector<int>& col_idxs,
-                                                   const thrust::device_vector<double>& vals, double* dense) {
+int ReactorNVectorSerialGpu::SparseToDenseDevice(const zerork::device_vector<int>& row_idxs, const zerork::device_vector<int>& col_idxs,
+                                                   const zerork::device_vector<double>& vals, double* dense) {
   int num_threads = std::min(MAX_THREADS_PER_BLOCK,nnz_*num_reactors_);
   int num_blocks = (nnz_*num_reactors_ + num_threads - 1)/num_threads;
   RNSC_SparseToDenseDevice<<<num_blocks, num_threads>>>(num_reactors_, num_variables_, nnz_,

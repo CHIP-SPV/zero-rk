@@ -39,5 +39,7 @@ if(${ENABLE_GPU})
       message(WARNING "ENABLE_HIPSOLVERRF set ON, but not supported in HIP version ${HIP_VERSION}")
     endif()
   endif()
+
+  option(ZERORK_HAVE_RMM_DEVICE_VECTOR "Toggle for RMM Device Vector in cfd_plugin" OFF)
 endif()
 

@@ -153,7 +153,7 @@ void ReactorConstantPressureGPU::GetState(
                       thrust::placeholders::_1*double_options_["reference_temperature"]);
   } else {
     temperatures_dev_ = initial_temperatures_dev_;
-    thrust::device_vector<double> energies_dev(initial_energies_dev_); //might be worth saving this temp vector
+    zerork::device_vector<double> energies_dev(initial_energies_dev_); //might be worth saving this temp vector
     if(e_src_dev_.size() > 0) {
       const double delta_t = reactor_time-initial_time_;
       thrust::transform(e_src_dev_.begin(), e_src_dev_.end(), initial_energies_dev_.begin(), energies_dev.begin(), saxpy_functor<double>(delta_t));
@@ -163,7 +163,7 @@ void ReactorConstantPressureGPU::GetState(
   }
   //TODO: Async
   hipMemcpy(T,thrust::raw_pointer_cast(&temperatures_dev_[0]),sizeof(double)*num_reactors_,hipMemcpyDeviceToHost);
-  thrust::device_vector<double> current_pressures = pressures_dev_;
+  zerork::device_vector<double> current_pressures = pressures_dev_;
   if(dpdts_dev_.size() != 0) {
     const double delta_t = reactor_time-initial_time_;
     thrust::transform(dpdts_dev_.begin(), dpdts_dev_.end(),
@@ -200,7 +200,7 @@ int ReactorConstantPressureGPU::GetTimeDerivative(const double reactor_time,
 
   //Update density (only if no y_src)
   if(y_src_dev_.size() == 0) {
-    thrust::device_vector<double> current_pressures = pressures_dev_;
+    zerork::device_vector<double> current_pressures = pressures_dev_;
     if(dpdts_dev_.size() != 0) {
       const double delta_t = reactor_time-initial_time_;
       thrust::transform(dpdts_dev_.begin(), dpdts_dev_.end(), pressures_dev_.begin(), current_pressures.begin(), saxpy_functor<double>(delta_t));
@@ -215,7 +215,7 @@ int ReactorConstantPressureGPU::GetTimeDerivative(const double reactor_time,
 
   if(e_src_dev_.size() != 0) {
     const double delta_t = reactor_time-initial_time_;
-    thrust::device_vector<double> energies_dev(num_reactors_); //might be worth saving this temp vector
+    zerork::device_vector<double> energies_dev(num_reactors_); //might be worth saving this temp vector
     thrust::transform(e_src_dev_.begin(), e_src_dev_.end(), initial_energies_dev_.begin(), energies_dev.begin(), saxpy_functor<double>(delta_t));
     mech_ptr_->getTemperatureFromHY_mr_dev(num_reactors_, thrust::raw_pointer_cast(&energies_dev[0]), y_ptr_dev, thrust::raw_pointer_cast(&temperatures_dev_[0]));
   }

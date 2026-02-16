@@ -7,6 +7,8 @@
 
 #include "../hip_la_manager/hip_la_manager.h"
 
+#include "../device_vector/device_vector.h"
+
 template<typename T>
 class hipblas_manager : public hip_la_manager<T>
 {
@@ -42,12 +44,12 @@ class hipblas_manager : public hip_la_manager<T>
   std::vector<int> info_;
 
   //device pointers
-  int* info_dev_;
-  T* tmp_dev_;
-  T* matrix_inverse_dev_;
-  T** matrix_inverse_pointers_dev_;
-  T** matrix_pointers_dev_;
-  T** tmp_pointers_dev_;
+  zerork::device_vector<int> info_dev_;
+  zerork::device_vector<T> tmp_dev_;
+  zerork::device_vector<T> matrix_inverse_dev_;
+  zerork::device_vector<T*> matrix_inverse_pointers_dev_;
+  zerork::device_vector<T*> matrix_pointers_dev_;
+  zerork::device_vector<T*> tmp_pointers_dev_;
 
   hipblasHandle_t hipblas_handle_;
   hipError_t hipStatus_;
