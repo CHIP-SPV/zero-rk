@@ -1,9 +1,21 @@
 #!/bin/bash
 
-module restore
-module use /soft/modulefiles
-module load chipStar/llvm19/20251107-19/release
-module load cmake
+# loads modules by default but a flag that will avoid the module loads.
+# this is useful for CI
+LOAD_MODULES=true
+
+  for arg in "$@"; do
+      if [[ "$arg" == "--no-module-loads" ]]; then
+          LOAD_MODULES=false
+      fi
+  done
+
+  if $LOAD_MODULES; then
+      module restore
+      module use /soft/modulefiles
+      module load chipStar/llvm19/20251107-19/release
+      module load cmake
+fi
 
 export CHIP_JIT_FLAGS_OVERRIDE="-ze-opt-enable-auto-large-GRF-mode"
 export CHIP_LOGLEVEL=off
