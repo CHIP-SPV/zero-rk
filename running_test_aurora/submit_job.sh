@@ -31,6 +31,7 @@ echo "------ JOB STARTING ------"
 date
 START_TIME=$(date +"%Y-%m-%d %H:%M:%S")
 mpiexec --np ${NTOTRANKS} -ppn ${NRANKS} -d ${NDEPTH} -env OMP_NUM_THREADS=${NTHREADS}  gpu_tile_compact.sh $ZERORK_TEST
+error_code=$?
 date
 END_TIME=$(date +"%Y-%m-%d %H:%M:%S")
 echo "------ JOB ENDED ------"
@@ -48,5 +49,6 @@ MINUTES=$(( (DURATION_SECONDS % 3600) / 60 ))
 SECONDS=$((DURATION_SECONDS % 60))
 
 echo "Job time in seconds: $DURATION_SECONDS"
+exit $?
 echo "Duration: $HOURS hours, $MINUTES minutes, and $SECONDS seconds."
 
