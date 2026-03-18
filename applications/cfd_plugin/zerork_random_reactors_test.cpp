@@ -87,30 +87,31 @@ main(int argc, char *argv[])
   zerork_handle zrm_handle;
   initialize_zerork(zrm_handle);
 
-  // unsigned int const ns = 6; //2-step propane: C3H8 O2 H2O CO CO2 N2
-  // std::vector<double> const Yf{1.00, 0.00, 0.00, 0.00, 0.00, 0.00};
-  // std::vector<double> const Yo{0.00, 0.23, 0.00, 0.00, 0.00, 0.77};
-
-  unsigned int const ns = 20;
-  std::vector<double> const Yf{0.00, 1.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
-    0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00};
-  std::vector<double> const Yo{0.23, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
-    0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.77};
-
-  size_t const N_total = 2e9;  
-  unsigned int const N = N_total/nranks;
-
-  if (rank == 0) std::cout<<"Total Reactors, N_total = " << N_total <<std::endl;
-  if (rank == 0) std::cout<<"No. of Ranks, nranks = " << nranks <<std::endl;  
-  if (rank == 0) std::cout<<"Reactors per Rank, N = " << N <<std::endl;
+  unsigned int const ns = 6; //2-step propane: C3H8 O2 H2O CO CO2 N2
+  std::vector<double> const Yf{1.00, 0.00, 0.00, 0.00, 0.00, 0.00};
+  std::vector<double> const Yo{0.00, 0.23, 0.00, 0.00, 0.00, 0.77};
+  unsigned int const N = 76336;
   
-  auto T = getRandomDoubles(N, 300.0, 2100.0);
+  // unsigned int const ns = 20;
+  // std::vector<double> const Yf{0.00, 1.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+  //   0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00};
+  // std::vector<double> const Yo{0.23, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+  //   0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.77};
+
+  // size_t const N_total = 2e9;
+  // unsigned int const N = N_total/nranks;
+
+  // if (rank == 0) std::cout<<"Total Reactors, N_total = " << N_total <<std::endl;
+  // if (rank == 0) std::cout<<"No. of Ranks, nranks = " << nranks <<std::endl;  
+  // if (rank == 0) std::cout<<"Reactors per Rank, N = " << N <<std::endl;
+  
+  auto T = getRandomDoubles(N, 300.0, 1700.0);
   auto P = getRandomDoubles(N, 101325.0, 101325.0);
   auto Y = getRandomY(N, Yf, Yo);
 
-  double t = 0;
-  double const dt = 1e-8;
-  unsigned int const n_steps = 100;
+  double t = 0;  
+  double const dt = 2.66E-08;
+  unsigned int const n_steps = 1000;
 
   std::default_random_engine gen;
   gen.seed(std::chrono::system_clock::now().time_since_epoch().count());
@@ -131,12 +132,12 @@ main(int argc, char *argv[])
     MPI_Allreduce(&Tmin, &T_min_g, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
     MPI_Allreduce(&Tmax, &T_max_g, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
     
-    if (rank == 0) std::cout<<"step = "<<step<<", t = " <<t<<"s : N = "<<N<<", Tmin = " << T_min_g << ", Tmax = " << T_max_g << std::endl;
+    if (rank == 0 and (step % 10 == 0)) std::cout<<"step = "<<step<<", t = " <<t<<"s : N = "<<N<<", Tmin = " << T_min_g << ", Tmax = " << T_max_g << std::endl;
   }
 
   MPI_Finalize();
 
   if (rank == 0) std::cout<<"End of computation!"<<std::endl;
   
-  return 1;
+  return 0;
 }
