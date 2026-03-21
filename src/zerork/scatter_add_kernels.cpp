@@ -1,5 +1,6 @@
 #include "hip/hip_runtime.h"
 #include "scatter_add_kernels.h"
+#include <algorithm>
 
 #if defined(__CUDA_ARCH__) &&  __CUDA_ARCH__ < 600
 namespace {
