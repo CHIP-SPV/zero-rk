@@ -1,0 +1,10 @@
+--- src/sunmemory/hip/sundials_hip_memory.hip.cpp	2026-03-21 14:21:11.000000000 -0500
++++ src/sunmemory/hip/sundials_hip_memory.hip.cpp	2026-03-21 14:21:21.000000000 -0500
+@@ -19,6 +19,7 @@
+ #include <sunmemory/sunmemory_hip.h>
+ #include "sundials_debug.h"
+ #include "sundials_hip.h"
++#include <cstring>
+ 
+ SUNMemoryHelper SUNMemoryHelper_Hip()
+ {
