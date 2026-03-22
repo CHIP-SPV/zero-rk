@@ -296,9 +296,9 @@ void ZeroRKReactorManager::AssignGpuId() {
       ranks_per_gpu = atoi(getenv("ZERORK_GPU_MPS_RANKS"));
     }
     /* Assign device to MPI process*/
-    if(node_rank / n_devices < ranks_per_gpu) {
+    //    if(node_rank / n_devices < ranks_per_gpu) {
       gpu_id_ = node_rank % n_devices;
-    }
+      //}
     if(gpu_id_ >= 0) {
 #ifdef USE_MPI
       printf("Assigning device %d to process on node %s rank %d \n", gpu_id_, host_name, rank);

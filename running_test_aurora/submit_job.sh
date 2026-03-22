@@ -19,7 +19,7 @@ ZERORK_TEST=${INST_DIR}/bin/zerork_random_reactors_test_gpu.x
 module list
 
 export CHIP_JIT_FLAGS_OVERRIDE="-ze-opt-enable-auto-large-GRF-mode"
-export ZERORK_GPUS_PER_NODE=12
+#export ZERORK_GPUS_PER_NODE=12
 
 echo "NUM_OF_NODES=${NNODES}  TOTAL_NUM_RANKS=${NTOTRANKS}  RANKS_PER_NODE=${NRANKS} THREADS_PER_RANK=${NTHREADS}"
 
