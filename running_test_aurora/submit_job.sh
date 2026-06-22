@@ -1,4 +1,4 @@
-#!/bin/bash -l
+#!/bin/bash
 
 echo Jobid: $PBS_JOBID
 echo Running on host `hostname`
