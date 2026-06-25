@@ -21,6 +21,8 @@ module list
 export CHIP_JIT_FLAGS_OVERRIDE="-ze-opt-enable-auto-large-GRF-mode"
 #export ZERORK_GPUS_PER_NODE=12
 
+export ZERORK_REACTOR_USE_LU=1
+
 echo "NUM_OF_NODES=${NNODES}  TOTAL_NUM_RANKS=${NTOTRANKS}  RANKS_PER_NODE=${NRANKS} THREADS_PER_RANK=${NTHREADS}"
 
 echo "Binary path is $ZERORK_TEST"
