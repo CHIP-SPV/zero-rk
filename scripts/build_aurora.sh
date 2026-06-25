@@ -19,7 +19,7 @@ fi
 
 export CHIP_JIT_FLAGS_OVERRIDE="-ze-opt-enable-auto-large-GRF-mode"
 export CHIP_LOGLEVEL=off
-
+export ZERORK_REACTOR_USE_LU=1
 module list
 
 export MPICH_CXX=hipcc
