@@ -111,7 +111,7 @@ main(int argc, char *argv[])
 
   double t = 0;  
   double const dt = 2.66E-08;
-  unsigned int const n_steps = 500;
+  unsigned int const n_steps = 300;
 
   std::default_random_engine gen;
   gen.seed(std::chrono::system_clock::now().time_since_epoch().count());
