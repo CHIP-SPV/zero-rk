@@ -3,6 +3,7 @@
 #include <random>
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 
 #include "mpi.h"
 #include "zerork_cfd_plugin.h"
@@ -111,7 +112,10 @@ main(int argc, char *argv[])
 
   double t = 0;  
   double const dt = 2.66E-08;
-  unsigned int const n_steps = 300;
+  unsigned int n_steps = 300;
+  if (const char* env_n_steps = std::getenv("ZERORK_TEST_N_STEPS")) {
+    n_steps = static_cast<unsigned int>(std::strtoul(env_n_steps, nullptr, 10));
+  }
 
   std::default_random_engine gen;
   gen.seed(std::chrono::system_clock::now().time_since_epoch().count());
