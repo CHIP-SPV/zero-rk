@@ -207,7 +207,7 @@ main(int argc, char *argv[])
   // std::vector<double> const Yo{0.23, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
   //   0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.77};
 
-  size_t const Po = 0;
+  size_t const Po = 2;
   size_t const Nx = 100*(Po+1);
   size_t const Ny = 100*(Po+1);
   size_t const Nz = 5*(Po+1);
@@ -237,7 +237,10 @@ main(int argc, char *argv[])
   
   double t = 0;
   double const dt = 1e-8; //2e-7; //1e-8;
-  unsigned int const n_steps = 2000; //200000;
+  unsigned int n_steps = 2000; //200000;
+  if (const char* env_n_steps = std::getenv("ZERORK_TEST_N_STEPS")) {
+    n_steps = static_cast<unsigned int>(std::strtoul(env_n_steps, nullptr, 10));
+  }
 
   std::default_random_engine gen;
   gen.seed(std::chrono::system_clock::now().time_since_epoch().count());
@@ -275,5 +278,5 @@ main(int argc, char *argv[])
 
   if (rank == 0) std::cout<<"End of computation!"<<std::endl;
   
-  return 1;
+  return 0;
 }
