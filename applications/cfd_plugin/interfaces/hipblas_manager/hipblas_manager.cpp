@@ -7,6 +7,34 @@
 #include <cstdio>
 
 
+static const char* hipblas_status_str(hipblasStatus_t s) {
+  switch (s) {
+    case HIPBLAS_STATUS_SUCCESS:          return "HIPBLAS_STATUS_SUCCESS";
+    case HIPBLAS_STATUS_NOT_INITIALIZED:  return "HIPBLAS_STATUS_NOT_INITIALIZED";
+    case HIPBLAS_STATUS_ALLOC_FAILED:     return "HIPBLAS_STATUS_ALLOC_FAILED";
+    case HIPBLAS_STATUS_INVALID_VALUE:    return "HIPBLAS_STATUS_INVALID_VALUE";
+    case HIPBLAS_STATUS_MAPPING_ERROR:    return "HIPBLAS_STATUS_MAPPING_ERROR";
+    case HIPBLAS_STATUS_EXECUTION_FAILED: return "HIPBLAS_STATUS_EXECUTION_FAILED";
+    case HIPBLAS_STATUS_INTERNAL_ERROR:   return "HIPBLAS_STATUS_INTERNAL_ERROR";
+    case HIPBLAS_STATUS_NOT_SUPPORTED:    return "HIPBLAS_STATUS_NOT_SUPPORTED";
+    case HIPBLAS_STATUS_ARCH_MISMATCH:    return "HIPBLAS_STATUS_ARCH_MISMATCH";
+    case HIPBLAS_STATUS_HANDLE_IS_NULLPTR:return "HIPBLAS_STATUS_HANDLE_IS_NULLPTR";
+    case HIPBLAS_STATUS_INVALID_ENUM:     return "HIPBLAS_STATUS_INVALID_ENUM";
+    default:                              return "HIPBLAS_STATUS_UNKNOWN";
+  }
+}
+
+#define HIP_CHECK(cmd) do {                                             \
+  hipblasStatus_t s = (cmd); \
+if (s != HIPBLAS_STATUS_SUCCESS) {				       \
+    fprintf(stderr, "HIP error at %s:%d\n",                         \
+            __FILE__, __LINE__);                 \
+    exit(1);                                                            \
+  }                                                                     \
+} while (0)
+
+
+
 template<typename T>
 hipblas_manager<T>::hipblas_manager() :
   n_(-1),
@@ -68,6 +96,18 @@ void hipblas_manager<T>::AllocateDeviceMemory()
   }
   hipMemcpy(thrust::raw_pointer_cast(tmp_pointers_dev_.data()), tmp_ptrs_.data(), sizeof(T*)*num_batches_, hipMemcpyHostToDevice);
   gpu_err_check(hipGetLastError());
+
+  // Identity pivots for the strided getrs (which requires a non-NULL ipiv even
+  // though the factorization is no-pivot). ipiv[i] = i+1 (1-based) means "no row
+  // swap". A single n-element block is shared across all batches via strideP = 0
+  // in the getrs call. Built once here for a given shape.
+  ipiv_dev_.resize(n_);
+  std::vector<int> ipiv_host(n_);
+  for(int i = 0; i < n_; ++i) {
+    ipiv_host[i] = i + 1;
+  }
+  hipMemcpy(thrust::raw_pointer_cast(ipiv_dev_.data()), ipiv_host.data(), sizeof(int)*n_, hipMemcpyHostToDevice);
+  gpu_err_check(hipGetLastError());
 }
 
 template<typename T>
@@ -79,16 +119,21 @@ template<>
 void hipblas_manager<double>::getrf_batched() {
   int lda = n_;
   int* ipiv = NULL; //Turns off pivoting
-  printf("[hipblas_manager] Dgetrf_batched: n=%d lda=%d num_batches=%d\n",
+  // Matrices are contiguous by construction (data_ptrs_[j] = base + j*n*n,
+  // lda = n), so use the strided API: pass the base device pointer + a uniform
+  // stride instead of the pointer array. strideP = 0 since pivoting is off.
+  double* A_base = data_ptrs_[0];
+  hipblasStride strideA = (hipblasStride)n_ * n_;
+  printf("[hipblas_manager] Dgetrf_stridedBatched: n=%d lda=%d num_batches=%d\n",
          n_, lda, num_batches_);
   hipDeviceSynchronize();
   auto t0 = std::chrono::high_resolution_clock::now();
-  hipblasDgetrfBatched(hipblas_handle_, n_,
-                       thrust::raw_pointer_cast(matrix_pointers_dev_.data()), lda,
-                       ipiv, thrust::raw_pointer_cast(info_dev_.data()), num_batches_);
+  HIP_CHECK(hipblasDgetrfStridedBatched(hipblas_handle_, n_,
+                       A_base, lda, strideA,
+				 ipiv, (hipblasStride)0, thrust::raw_pointer_cast(info_dev_.data()), num_batches_));
   hipDeviceSynchronize();
   auto t1 = std::chrono::high_resolution_clock::now();
-  printf("[hipblas_manager] Dgetrf_batched: %.6f ms\n",
+  printf("[hipblas_manager] Dgetrf_stridedBatched: %.6f ms\n",
          std::chrono::duration<double, std::milli>(t1 - t0).count());
 }
 
@@ -102,9 +147,9 @@ void hipblas_manager<double>::getri_batched() {
          n_, lda, ldc, num_batches_);
   hipDeviceSynchronize();
   auto t0 = std::chrono::high_resolution_clock::now();
-  hipblasDgetriBatched(hipblas_handle_, n_, const_matrix_pointers_dev,
+  HIP_CHECK(hipblasDgetriBatched(hipblas_handle_, n_, const_matrix_pointers_dev,
                        lda, ipiv, thrust::raw_pointer_cast(matrix_inverse_pointers_dev_.data()),
-                       ldc, thrust::raw_pointer_cast(info_dev_.data()), num_batches_);
+				 ldc, thrust::raw_pointer_cast(info_dev_.data()), num_batches_));
   hipDeviceSynchronize();
   auto t1 = std::chrono::high_resolution_clock::now();
   printf("[hipblas_manager] Dgetri_batched: %.6f ms\n",
@@ -377,21 +422,28 @@ int hipblas_manager<T>::solve_invert(int num_batches, int n, const T* rhs, T* so
 
 template<>
 void hipblas_manager<double>::getrs_batched() {
-  int* ipiv = NULL; //Turns off pivoting
   int lda = n_;
   int ldb = n_;
   int info = 0;
-  double* const* const_matrix_pointers_dev = (double* const*) thrust::raw_pointer_cast(matrix_pointers_dev_.data());
-  printf("[hipblas_manager] Dgetrs_batched: n=%d nrhs=%d lda=%d ldb=%d num_batches=%d\n",
+  // Both the factored matrices (in values, base = data_ptrs_[0]) and the RHS
+  // (in tmp_dev_) are contiguous with uniform stride, so use the strided API:
+  // strideA = n*n, strideB = n (nrhs = 1). ipiv is the shared identity block
+  // (getrs rejects NULL); strideP = 0 makes every batch reuse that one block.
+  double* A_base = data_ptrs_[0];
+  double* B_base = thrust::raw_pointer_cast(tmp_dev_.data());
+  int* ipiv = thrust::raw_pointer_cast(ipiv_dev_.data());
+  hipblasStride strideA = (hipblasStride)n_ * n_;
+  hipblasStride strideB = (hipblasStride)n_;
+  printf("[hipblas_manager] Dgetrs_stridedBatched: n=%d nrhs=%d lda=%d ldb=%d num_batches=%d\n",
          n_, 1, lda, ldb, num_batches_);
   hipDeviceSynchronize();
   auto t0 = std::chrono::high_resolution_clock::now();
-  hipblasDgetrsBatched(hipblas_handle_, HIPBLAS_OP_N, n_, 1,
-                       const_matrix_pointers_dev, lda,
-                       ipiv, thrust::raw_pointer_cast(tmp_pointers_dev_.data()), ldb, &info, num_batches_);
+  HIP_CHECK(hipblasDgetrsStridedBatched(hipblas_handle_, HIPBLAS_OP_N, n_, 1,
+                       A_base, lda, strideA,
+				 ipiv, (hipblasStride)0, B_base, ldb, strideB, &info, num_batches_));
   hipDeviceSynchronize();
   auto t1 = std::chrono::high_resolution_clock::now();
-  printf("[hipblas_manager] Dgetrs_batched: %.6f ms\n",
+  printf("[hipblas_manager] Dgetrs_stridedBatched: %.6f ms\n",
          std::chrono::duration<double, std::milli>(t1 - t0).count());
 }
 
