@@ -97,16 +97,18 @@ void hipblas_manager<T>::AllocateDeviceMemory()
   hipMemcpy(thrust::raw_pointer_cast(tmp_pointers_dev_.data()), tmp_ptrs_.data(), sizeof(T*)*num_batches_, hipMemcpyHostToDevice);
   gpu_err_check(hipGetLastError());
 
-  // Identity pivots for the strided getrs (which requires a non-NULL ipiv even
+  // Identity pivots for the batched getrs (which requires a non-NULL ipiv even
   // though the factorization is no-pivot). ipiv[i] = i+1 (1-based) means "no row
-  // swap". A single n-element block is shared across all batches via strideP = 0
-  // in the getrs call. Built once here for a given shape.
-  ipiv_dev_.resize(n_);
-  std::vector<int> ipiv_host(n_);
-  for(int i = 0; i < n_; ++i) {
-    ipiv_host[i] = i + 1;
+  // swap". The batched getrs reads a contiguous n*num_batches pivot array, so
+  // build one identity block per batch. Built once here for a given shape.
+  ipiv_dev_.resize(n_*num_batches_);
+  std::vector<int> ipiv_host(n_*num_batches_);
+  for(int j = 0; j < num_batches_; ++j) {
+    for(int i = 0; i < n_; ++i) {
+      ipiv_host[j*n_ + i] = i + 1;
+    }
   }
-  hipMemcpy(thrust::raw_pointer_cast(ipiv_dev_.data()), ipiv_host.data(), sizeof(int)*n_, hipMemcpyHostToDevice);
+  hipMemcpy(thrust::raw_pointer_cast(ipiv_dev_.data()), ipiv_host.data(), sizeof(int)*n_*num_batches_, hipMemcpyHostToDevice);
   gpu_err_check(hipGetLastError());
 }
 
@@ -425,25 +427,20 @@ void hipblas_manager<double>::getrs_batched() {
   int lda = n_;
   int ldb = n_;
   int info = 0;
-  // Both the factored matrices (in values, base = data_ptrs_[0]) and the RHS
-  // (in tmp_dev_) are contiguous with uniform stride, so use the strided API:
-  // strideA = n*n, strideB = n (nrhs = 1). ipiv is the shared identity block
-  // (getrs rejects NULL); strideP = 0 makes every batch reuse that one block.
-  double* A_base = data_ptrs_[0];
-  double* B_base = thrust::raw_pointer_cast(tmp_dev_.data());
+  // ipiv is the identity pivot array (getrs rejects NULL) laid out as one
+  // n-element block per batch; the factorization is no-pivot.
   int* ipiv = thrust::raw_pointer_cast(ipiv_dev_.data());
-  hipblasStride strideA = (hipblasStride)n_ * n_;
-  hipblasStride strideB = (hipblasStride)n_;
-  printf("[hipblas_manager] Dgetrs_stridedBatched: n=%d nrhs=%d lda=%d ldb=%d num_batches=%d\n",
+  double* const* const_matrix_pointers_dev = (double* const*) thrust::raw_pointer_cast(matrix_pointers_dev_.data());
+  printf("[hipblas_manager] Dgetrs_batched: n=%d nrhs=%d lda=%d ldb=%d num_batches=%d\n",
          n_, 1, lda, ldb, num_batches_);
   hipDeviceSynchronize();
   auto t0 = std::chrono::high_resolution_clock::now();
-  HIP_CHECK(hipblasDgetrsStridedBatched(hipblas_handle_, HIPBLAS_OP_N, n_, 1,
-                       A_base, lda, strideA,
-				 ipiv, (hipblasStride)0, B_base, ldb, strideB, &info, num_batches_));
+  hipblasDgetrsBatched(hipblas_handle_, HIPBLAS_OP_N, n_, 1,
+                       const_matrix_pointers_dev, lda,
+                       ipiv, thrust::raw_pointer_cast(tmp_pointers_dev_.data()), ldb, &info, num_batches_);
   hipDeviceSynchronize();
   auto t1 = std::chrono::high_resolution_clock::now();
-  printf("[hipblas_manager] Dgetrs_stridedBatched: %.6f ms\n",
+  printf("[hipblas_manager] Dgetrs_batched: %.6f ms\n",
          std::chrono::duration<double, std::milli>(t1 - t0).count());
 }
 
