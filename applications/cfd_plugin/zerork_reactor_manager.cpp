@@ -1312,7 +1312,7 @@ void ZeroRKReactorManager::ProcessPerformance()
 
     MPI_Reduce(&n_steps_cpu_,&ri,1,MPI_INT,MPI_SUM,root_rank_,MPI_COMM_WORLD);
     if(rank_ == root_rank_) n_steps_cpu_ = ri;
-    MPI_Reduce(&n_steps_gpu_,&ri,1,MPI_DOUBLE,MPI_SUM,root_rank_,MPI_COMM_WORLD);
+    MPI_Reduce(&n_steps_gpu_,&ri,1,MPI_INT,MPI_SUM,root_rank_,MPI_COMM_WORLD);
     if(rank_ == root_rank_) n_steps_gpu_ = ri;
 
     //Get max time for cpu and gpu
