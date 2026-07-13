@@ -24,7 +24,7 @@ static const char* hipblas_status_str(hipblasStatus_t s) {
   }
 }
 
-#define HIP_CHECK(cmd) do {                                             \
+#define HIPBLAS_CHECK(cmd) do {                                             \
   hipblasStatus_t s = (cmd); \
 if (s != HIPBLAS_STATUS_SUCCESS) {				       \
     fprintf(stderr, "HIP error at %s:%d\n",                         \
@@ -126,17 +126,9 @@ void hipblas_manager<double>::getrf_batched() {
   // stride instead of the pointer array. strideP = 0 since pivoting is off.
   double* A_base = data_ptrs_[0];
   hipblasStride strideA = (hipblasStride)n_ * n_;
-  printf("[hipblas_manager] Dgetrf_stridedBatched: n=%d lda=%d num_batches=%d\n",
-         n_, lda, num_batches_);
-  hipDeviceSynchronize();
-  auto t0 = std::chrono::high_resolution_clock::now();
-  HIP_CHECK(hipblasDgetrfStridedBatched(hipblas_handle_, n_,
+  HIPBLAS_CHECK(hipblasDgetrfStridedBatched(hipblas_handle_, n_,
                        A_base, lda, strideA,
 				 ipiv, (hipblasStride)0, thrust::raw_pointer_cast(info_dev_.data()), num_batches_));
-  hipDeviceSynchronize();
-  auto t1 = std::chrono::high_resolution_clock::now();
-  printf("[hipblas_manager] Dgetrf_stridedBatched: %.6f ms\n",
-         std::chrono::duration<double, std::milli>(t1 - t0).count());
 }
 
 template<>
@@ -145,17 +137,9 @@ void hipblas_manager<double>::getri_batched() {
   int* ipiv = NULL; //Turns off pivoting
   int ldc = n_;
   double* const* const_matrix_pointers_dev = (double* const*) thrust::raw_pointer_cast(matrix_pointers_dev_.data());
-  printf("[hipblas_manager] Dgetri_batched: n=%d lda=%d ldc=%d num_batches=%d\n",
-         n_, lda, ldc, num_batches_);
-  hipDeviceSynchronize();
-  auto t0 = std::chrono::high_resolution_clock::now();
-  HIP_CHECK(hipblasDgetriBatched(hipblas_handle_, n_, const_matrix_pointers_dev,
+  HIPBLAS_CHECK(hipblasDgetriBatched(hipblas_handle_, n_, const_matrix_pointers_dev,
                        lda, ipiv, thrust::raw_pointer_cast(matrix_inverse_pointers_dev_.data()),
 				 ldc, thrust::raw_pointer_cast(info_dev_.data()), num_batches_));
-  hipDeviceSynchronize();
-  auto t1 = std::chrono::high_resolution_clock::now();
-  printf("[hipblas_manager] Dgetri_batched: %.6f ms\n",
-         std::chrono::duration<double, std::milli>(t1 - t0).count());
 }
 
 template<>
@@ -163,17 +147,9 @@ void hipblas_manager<hipDoubleComplex>::getrf_batched() {
   int lda = n_;
   int* ipiv = NULL; //Turns off pivoting
   hipblasDoubleComplex* const* const_matrix_pointers_dev = (hipblasDoubleComplex* const*) thrust::raw_pointer_cast(matrix_pointers_dev_.data());
-  printf("[hipblas_manager] Zgetrf_batched: n=%d lda=%d num_batches=%d\n",
-         n_, lda, num_batches_);
-  hipDeviceSynchronize();
-  auto t0 = std::chrono::high_resolution_clock::now();
-  hipblasZgetrfBatched(hipblas_handle_, n_,
+  HIPBLAS_CHECK(hipblasZgetrfBatched(hipblas_handle_, n_,
                        const_matrix_pointers_dev, lda,
-                       ipiv, thrust::raw_pointer_cast(info_dev_.data()), num_batches_);
-  hipDeviceSynchronize();
-  auto t1 = std::chrono::high_resolution_clock::now();
-  printf("[hipblas_manager] Zgetrf_batched: %.6f ms\n",
-         std::chrono::duration<double, std::milli>(t1 - t0).count());
+				     ipiv, thrust::raw_pointer_cast(info_dev_.data()), num_batches_));
 }
 
 template<>
@@ -183,17 +159,9 @@ void hipblas_manager<hipDoubleComplex>::getri_batched() {
   int ldc = n_;
   hipblasDoubleComplex* const* const_matrix_pointers_dev = (hipblasDoubleComplex* const*) thrust::raw_pointer_cast(matrix_pointers_dev_.data());
   hipblasDoubleComplex* const* const_matrix_inverse_pointers_dev = (hipblasDoubleComplex* const*) thrust::raw_pointer_cast(matrix_inverse_pointers_dev_.data());
-  printf("[hipblas_manager] Zgetri_batched: n=%d lda=%d ldc=%d num_batches=%d\n",
-         n_, lda, ldc, num_batches_);
-  hipDeviceSynchronize();
-  auto t0 = std::chrono::high_resolution_clock::now();
-  hipblasZgetriBatched(hipblas_handle_, n_, const_matrix_pointers_dev,
+  HIPBLAS_CHECK(hipblasZgetriBatched(hipblas_handle_, n_, const_matrix_pointers_dev,
                        lda, ipiv, const_matrix_inverse_pointers_dev,
-                       ldc, thrust::raw_pointer_cast(info_dev_.data()), num_batches_);
-  hipDeviceSynchronize();
-  auto t1 = std::chrono::high_resolution_clock::now();
-  printf("[hipblas_manager] Zgetri_batched: %.6f ms\n",
-         std::chrono::duration<double, std::milli>(t1 - t0).count());
+                       ldc, thrust::raw_pointer_cast(info_dev_.data()), num_batches_));
 }
 
 
@@ -431,17 +399,9 @@ void hipblas_manager<double>::getrs_batched() {
   // n-element block per batch; the factorization is no-pivot.
   int* ipiv = thrust::raw_pointer_cast(ipiv_dev_.data());
   double* const* const_matrix_pointers_dev = (double* const*) thrust::raw_pointer_cast(matrix_pointers_dev_.data());
-  printf("[hipblas_manager] Dgetrs_batched: n=%d nrhs=%d lda=%d ldb=%d num_batches=%d\n",
-         n_, 1, lda, ldb, num_batches_);
-  hipDeviceSynchronize();
-  auto t0 = std::chrono::high_resolution_clock::now();
-  hipblasDgetrsBatched(hipblas_handle_, HIPBLAS_OP_N, n_, 1,
+  HIPBLAS_CHECK(hipblasDgetrsBatched(hipblas_handle_, HIPBLAS_OP_N, n_, 1,
                        const_matrix_pointers_dev, lda,
-                       ipiv, thrust::raw_pointer_cast(tmp_pointers_dev_.data()), ldb, &info, num_batches_);
-  hipDeviceSynchronize();
-  auto t1 = std::chrono::high_resolution_clock::now();
-  printf("[hipblas_manager] Dgetrs_batched: %.6f ms\n",
-         std::chrono::duration<double, std::milli>(t1 - t0).count());
+				     ipiv, thrust::raw_pointer_cast(tmp_pointers_dev_.data()), ldb, &info, num_batches_));
 }
 
 template<>
@@ -452,17 +412,9 @@ void hipblas_manager<hipDoubleComplex>::getrs_batched() {
   int info = 0;
   hipblasDoubleComplex* const* const_matrix_pointers_dev = (hipblasDoubleComplex* const*) thrust::raw_pointer_cast(matrix_pointers_dev_.data());
   hipblasDoubleComplex* const* const_tmp_pointers_dev = (hipblasDoubleComplex* const*) thrust::raw_pointer_cast(tmp_pointers_dev_.data());
-  printf("[hipblas_manager] Zgetrs_batched: n=%d nrhs=%d lda=%d ldb=%d num_batches=%d\n",
-         n_, 1, lda, ldb, num_batches_);
-  hipDeviceSynchronize();
-  auto t0 = std::chrono::high_resolution_clock::now();
-  hipblasZgetrsBatched(hipblas_handle_, HIPBLAS_OP_N, n_, 1,
+  HIPBLAS_CHECK(hipblasZgetrsBatched(hipblas_handle_, HIPBLAS_OP_N, n_, 1,
                        const_matrix_pointers_dev, lda,
-                       ipiv, const_tmp_pointers_dev, ldb, &info, num_batches_);
-  hipDeviceSynchronize();
-  auto t1 = std::chrono::high_resolution_clock::now();
-  printf("[hipblas_manager] Zgetrs_batched: %.6f ms\n",
-         std::chrono::duration<double, std::milli>(t1 - t0).count());
+                       ipiv, const_tmp_pointers_dev, ldb, &info, num_batches_));
 }
 
 template<typename T>
