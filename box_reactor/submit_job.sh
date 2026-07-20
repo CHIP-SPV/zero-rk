@@ -17,7 +17,7 @@ echo Running on host `hostname`
 echo Running on nodes `cat $PBS_NODEFILE`
 
 NNODES=`wc -l < $PBS_NODEFILE`
-NRANKS=1       # Number of MPI ranks per node
+NRANKS=12      # Number of MPI ranks per node
 NDEPTH=1        # Number of hardware threads per rank, spacing between MPI ranks on a node
 NTHREADS=1      # Number of OMP threads per rank, given to OMP_NUM_THREADS
 NTOTRANKS=$((NNODES*NRANKS))
@@ -28,10 +28,6 @@ export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${INST_DIR}/lib64
 
 ZERORK_TEST=${INST_DIR}/bin/zerork_box_reactor_test_gpu.x
 
-module use /soft/modulefiles
-module load chipStar/llvm19/20251107-19/release
-
-#module load chipStar/llvm19/20260615-19/release
 module list
 
 export CHIP_JIT_FLAGS_OVERRIDE="-ze-opt-enable-auto-large-GRF-mode"
@@ -48,12 +44,12 @@ ldd $ZERORK_TEST
 echo "------ JOB STARTING ------"
 date
 START_TIME=$(date +"%Y-%m-%d %H:%M:%S")
-module load thapi
-export THAPI_SYNC_DAEMON=fs
+#module load thapi
+#export THAPI_SYNC_DAEMON=fs
 #module load pti-gpu
-mpiexec --np ${NTOTRANKS} -ppn ${NRANKS} -d ${NDEPTH} -env OMP_NUM_THREADS=${NTHREADS} /home/applenco/thapi_devel_clean/build/ici/bin/iprof -- gpu_tile_compact.sh $ZERORK_TEST
+#mpiexec --np ${NTOTRANKS} -ppn ${NRANKS} -d ${NDEPTH} -env OMP_NUM_THREADS=${NTHREADS} /home/applenco/thapi_devel_clean/build/ici/bin/iprof -- gpu_tile_compact.sh $ZERORK_TEST
 #mpiexec --np ${NTOTRANKS} -ppn ${NRANKS} -d ${NDEPTH} -env OMP_NUM_THREADS=${NTHREADS} unitrace --device-timings -- gpu_tile_compact.sh $ZERORK_TEST
-#mpiexec --np ${NTOTRANKS} -ppn ${NRANKS} -d ${NDEPTH} -env OMP_NUM_THREADS=${NTHREADS}  gpu_tile_compact.sh $ZERORK_TEST
+mpiexec --np ${NTOTRANKS} -ppn ${NRANKS} -d ${NDEPTH} -env OMP_NUM_THREADS=${NTHREADS}  gpu_tile_compact.sh $ZERORK_TEST
 
 date
 END_TIME=$(date +"%Y-%m-%d %H:%M:%S")
