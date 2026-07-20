@@ -3,6 +3,37 @@
 #include "../../gpu_err_check.h"
 #include "hipblas_manager.h"
 
+#include <chrono>
+#include <cstdio>
+
+
+static const char* hipblas_status_str(hipblasStatus_t s) {
+  switch (s) {
+    case HIPBLAS_STATUS_SUCCESS:          return "HIPBLAS_STATUS_SUCCESS";
+    case HIPBLAS_STATUS_NOT_INITIALIZED:  return "HIPBLAS_STATUS_NOT_INITIALIZED";
+    case HIPBLAS_STATUS_ALLOC_FAILED:     return "HIPBLAS_STATUS_ALLOC_FAILED";
+    case HIPBLAS_STATUS_INVALID_VALUE:    return "HIPBLAS_STATUS_INVALID_VALUE";
+    case HIPBLAS_STATUS_MAPPING_ERROR:    return "HIPBLAS_STATUS_MAPPING_ERROR";
+    case HIPBLAS_STATUS_EXECUTION_FAILED: return "HIPBLAS_STATUS_EXECUTION_FAILED";
+    case HIPBLAS_STATUS_INTERNAL_ERROR:   return "HIPBLAS_STATUS_INTERNAL_ERROR";
+    case HIPBLAS_STATUS_NOT_SUPPORTED:    return "HIPBLAS_STATUS_NOT_SUPPORTED";
+    case HIPBLAS_STATUS_ARCH_MISMATCH:    return "HIPBLAS_STATUS_ARCH_MISMATCH";
+    case HIPBLAS_STATUS_HANDLE_IS_NULLPTR:return "HIPBLAS_STATUS_HANDLE_IS_NULLPTR";
+    case HIPBLAS_STATUS_INVALID_ENUM:     return "HIPBLAS_STATUS_INVALID_ENUM";
+    default:                              return "HIPBLAS_STATUS_UNKNOWN";
+  }
+}
+
+#define HIPBLAS_CHECK(cmd) do {                                             \
+  hipblasStatus_t s = (cmd); \
+if (s != HIPBLAS_STATUS_SUCCESS) {				       \
+    fprintf(stderr, "HIP error at %s:%d\n",                         \
+            __FILE__, __LINE__);                 \
+    exit(1);                                                            \
+  }                                                                     \
+} while (0)
+
+
 
 template<typename T>
 hipblas_manager<T>::hipblas_manager() :
@@ -65,6 +96,20 @@ void hipblas_manager<T>::AllocateDeviceMemory()
   }
   hipMemcpy(thrust::raw_pointer_cast(tmp_pointers_dev_.data()), tmp_ptrs_.data(), sizeof(T*)*num_batches_, hipMemcpyHostToDevice);
   gpu_err_check(hipGetLastError());
+
+  // Identity pivots for the batched getrs (which requires a non-NULL ipiv even
+  // though the factorization is no-pivot). ipiv[i] = i+1 (1-based) means "no row
+  // swap". The batched getrs reads a contiguous n*num_batches pivot array, so
+  // build one identity block per batch. Built once here for a given shape.
+  ipiv_dev_.resize(n_*num_batches_);
+  std::vector<int> ipiv_host(n_*num_batches_);
+  for(int j = 0; j < num_batches_; ++j) {
+    for(int i = 0; i < n_; ++i) {
+      ipiv_host[j*n_ + i] = i + 1;
+    }
+  }
+  hipMemcpy(thrust::raw_pointer_cast(ipiv_dev_.data()), ipiv_host.data(), sizeof(int)*n_*num_batches_, hipMemcpyHostToDevice);
+  gpu_err_check(hipGetLastError());
 }
 
 template<typename T>
@@ -76,9 +121,14 @@ template<>
 void hipblas_manager<double>::getrf_batched() {
   int lda = n_;
   int* ipiv = NULL; //Turns off pivoting
-  hipblasDgetrfBatched(hipblas_handle_, n_,
-                       thrust::raw_pointer_cast(matrix_pointers_dev_.data()), lda,
-                       ipiv, thrust::raw_pointer_cast(info_dev_.data()), num_batches_);
+  // Matrices are contiguous by construction (data_ptrs_[j] = base + j*n*n,
+  // lda = n), so use the strided API: pass the base device pointer + a uniform
+  // stride instead of the pointer array. strideP = 0 since pivoting is off.
+  double* A_base = data_ptrs_[0];
+  hipblasStride strideA = (hipblasStride)n_ * n_;
+  HIPBLAS_CHECK(hipblasDgetrfStridedBatched(hipblas_handle_, n_,
+                       A_base, lda, strideA,
+				 ipiv, (hipblasStride)0, thrust::raw_pointer_cast(info_dev_.data()), num_batches_));
 }
 
 template<>
@@ -87,9 +137,9 @@ void hipblas_manager<double>::getri_batched() {
   int* ipiv = NULL; //Turns off pivoting
   int ldc = n_;
   double* const* const_matrix_pointers_dev = (double* const*) thrust::raw_pointer_cast(matrix_pointers_dev_.data());
-  hipblasDgetriBatched(hipblas_handle_, n_, const_matrix_pointers_dev,
+  HIPBLAS_CHECK(hipblasDgetriBatched(hipblas_handle_, n_, const_matrix_pointers_dev,
                        lda, ipiv, thrust::raw_pointer_cast(matrix_inverse_pointers_dev_.data()),
-                       ldc, thrust::raw_pointer_cast(info_dev_.data()), num_batches_);
+				 ldc, thrust::raw_pointer_cast(info_dev_.data()), num_batches_));
 }
 
 template<>
@@ -97,9 +147,9 @@ void hipblas_manager<hipDoubleComplex>::getrf_batched() {
   int lda = n_;
   int* ipiv = NULL; //Turns off pivoting
   hipblasDoubleComplex* const* const_matrix_pointers_dev = (hipblasDoubleComplex* const*) thrust::raw_pointer_cast(matrix_pointers_dev_.data());
-  hipblasZgetrfBatched(hipblas_handle_, n_,
+  HIPBLAS_CHECK(hipblasZgetrfBatched(hipblas_handle_, n_,
                        const_matrix_pointers_dev, lda,
-                       ipiv, thrust::raw_pointer_cast(info_dev_.data()), num_batches_);
+				     ipiv, thrust::raw_pointer_cast(info_dev_.data()), num_batches_));
 }
 
 template<>
@@ -109,9 +159,9 @@ void hipblas_manager<hipDoubleComplex>::getri_batched() {
   int ldc = n_;
   hipblasDoubleComplex* const* const_matrix_pointers_dev = (hipblasDoubleComplex* const*) thrust::raw_pointer_cast(matrix_pointers_dev_.data());
   hipblasDoubleComplex* const* const_matrix_inverse_pointers_dev = (hipblasDoubleComplex* const*) thrust::raw_pointer_cast(matrix_inverse_pointers_dev_.data());
-  hipblasZgetriBatched(hipblas_handle_, n_, const_matrix_pointers_dev,
+  HIPBLAS_CHECK(hipblasZgetriBatched(hipblas_handle_, n_, const_matrix_pointers_dev,
                        lda, ipiv, const_matrix_inverse_pointers_dev,
-                       ldc, thrust::raw_pointer_cast(info_dev_.data()), num_batches_);
+                       ldc, thrust::raw_pointer_cast(info_dev_.data()), num_batches_));
 }
 
 
@@ -342,14 +392,16 @@ int hipblas_manager<T>::solve_invert(int num_batches, int n, const T* rhs, T* so
 
 template<>
 void hipblas_manager<double>::getrs_batched() {
-  int* ipiv = NULL; //Turns off pivoting
   int lda = n_;
   int ldb = n_;
   int info = 0;
+  // ipiv is the identity pivot array (getrs rejects NULL) laid out as one
+  // n-element block per batch; the factorization is no-pivot.
+  int* ipiv = thrust::raw_pointer_cast(ipiv_dev_.data());
   double* const* const_matrix_pointers_dev = (double* const*) thrust::raw_pointer_cast(matrix_pointers_dev_.data());
-  hipblasDgetrsBatched(hipblas_handle_, HIPBLAS_OP_N, n_, 1,
+  HIPBLAS_CHECK(hipblasDgetrsBatched(hipblas_handle_, HIPBLAS_OP_N, n_, 1,
                        const_matrix_pointers_dev, lda,
-                       ipiv, thrust::raw_pointer_cast(tmp_pointers_dev_.data()), ldb, &info, num_batches_);
+				     ipiv, thrust::raw_pointer_cast(tmp_pointers_dev_.data()), ldb, &info, num_batches_));
 }
 
 template<>
@@ -360,9 +412,9 @@ void hipblas_manager<hipDoubleComplex>::getrs_batched() {
   int info = 0;
   hipblasDoubleComplex* const* const_matrix_pointers_dev = (hipblasDoubleComplex* const*) thrust::raw_pointer_cast(matrix_pointers_dev_.data());
   hipblasDoubleComplex* const* const_tmp_pointers_dev = (hipblasDoubleComplex* const*) thrust::raw_pointer_cast(tmp_pointers_dev_.data());
-  hipblasZgetrsBatched(hipblas_handle_, HIPBLAS_OP_N, n_, 1,
+  HIPBLAS_CHECK(hipblasZgetrsBatched(hipblas_handle_, HIPBLAS_OP_N, n_, 1,
                        const_matrix_pointers_dev, lda,
-                       ipiv, const_tmp_pointers_dev, ldb, &info, num_batches_);
+                       ipiv, const_tmp_pointers_dev, ldb, &info, num_batches_));
 }
 
 template<typename T>

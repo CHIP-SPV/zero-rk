@@ -50,6 +50,7 @@ class hipblas_manager : public hip_la_manager<T>
   zerork::device_vector<T*> matrix_inverse_pointers_dev_;
   zerork::device_vector<T*> matrix_pointers_dev_;
   zerork::device_vector<T*> tmp_pointers_dev_;
+  zerork::device_vector<int> ipiv_dev_; //identity pivots for no-pivot batched getrs
 
   hipblasHandle_t hipblas_handle_;
   hipError_t hipStatus_;
