@@ -49,6 +49,7 @@ START_TIME=$(date +"%Y-%m-%d %H:%M:%S")
 #module load pti-gpu
 #mpiexec --np ${NTOTRANKS} -ppn ${NRANKS} -d ${NDEPTH} -env OMP_NUM_THREADS=${NTHREADS} /home/applenco/thapi_devel_clean/build/ici/bin/iprof -- gpu_tile_compact.sh $ZERORK_TEST
 #mpiexec --np ${NTOTRANKS} -ppn ${NRANKS} -d ${NDEPTH} -env OMP_NUM_THREADS=${NTHREADS} unitrace --device-timings -- gpu_tile_compact.sh $ZERORK_TEST
+export ZERORK_TEST_N_STEPS=750
 mpiexec --np ${NTOTRANKS} -ppn ${NRANKS} -d ${NDEPTH} -env OMP_NUM_THREADS=${NTHREADS}  gpu_tile_compact.sh $ZERORK_TEST
 
 date
