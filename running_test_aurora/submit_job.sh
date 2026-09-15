@@ -10,6 +10,8 @@ NDEPTH=1        # Number of hardware threads per rank, spacing between MPI ranks
 NTHREADS=1      # Number of OMP threads per rank, given to OMP_NUM_THREADS
 NTOTRANKS=$((NNODES*NRANKS))
 
+CPUBIND=1-8:9-16:17-24:25-32:33-40:41-48:53-60:61-68:69-76:77-84:85-92:93-100
+
 export INST_DIR=$PWD/../build_aurora/inst_dir/
 export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${INST_DIR}/lib
 export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${INST_DIR}/lib64
@@ -32,7 +34,7 @@ ldd $ZERORK_TEST
 echo "------ JOB STARTING ------"
 date
 START_TIME=$(date +"%Y-%m-%d %H:%M:%S")
-mpiexec --np ${NTOTRANKS} -ppn ${NRANKS} -d ${NDEPTH} -env OMP_NUM_THREADS=${NTHREADS}  gpu_tile_compact.sh $ZERORK_TEST
+mpiexec --np ${NTOTRANKS} -ppn ${NRANKS} --cpu-bind list:${CPUBIND} -env OMP_NUM_THREADS=${NTHREADS}  gpu_tile_compact.sh $ZERORK_TEST
 error_code=$?
 date
 END_TIME=$(date +"%Y-%m-%d %H:%M:%S")
