@@ -845,7 +845,8 @@ zerork_status_t ZeroRKReactorManager::SolveReactors()
   n_gpu_solve_ = 0;
   n_gpu_solve_no_temperature_ = 0;
 
-  int always_solve_temp = int_options_["always_solve_temperature"];
+  const int always_solve_temp = int_options_["always_solve_temperature"];
+  const bool dump_reactors = (int_options_["dump_reactors"]!=0);
 
   int n_reactors_self_calc = n_reactors_self_ + n_reactors_other_;
   std::vector<int> solved_gpu(n_reactors_self_calc, 0);
@@ -901,16 +902,22 @@ zerork_status_t ZeroRKReactorManager::SolveReactors()
       temp_delta_ptrs[j] = &temp_delta_other_[j_sort];
       mf_ptrs[j] = &mf_other_[j_sort*num_species_];
     }
-    if(int_options_["dump_reactors"]!=0) {
+    if(dump_reactors) {
       DumpReactor("pre", j, *T_ptrs[j], *P_ptrs[j], *rc_ptrs[j], *rg_ptrs[j], mf_ptrs[j]);
     }
   }
 
+  const int verbosity = int_options_["verbosity"];
+  const int integrator = int_options_["integrator"];
+  const bool constant_volume = (int_options_["constant_volume"] == 1);
+  const double solve_temp_threshold = double_options_["solve_temperature_threshold"];
 #ifdef ZERORK_GPU
+  const int n_reactors_min = int_options_["n_reactors_min"];
+  const int n_reactors_max = int_options_["n_reactors_max"];
   if(int_options_["gpu"] != 0 && rank_has_gpu_[rank_]) {
     //Instantiate reactors on first call, after options are set
     if(!reactor_gpu_ptr_) {
-      if(int_options_["constant_volume"] == 1) {
+      if(constant_volume) {
         reactor_gpu_ptr_ = std::make_unique<ReactorConstantVolumeGPU>(mech_cuda_ptr_);
       } else {
         reactor_gpu_ptr_ = std::make_unique<ReactorConstantPressureGPU>(mech_cuda_ptr_);
@@ -919,26 +926,26 @@ zerork_status_t ZeroRKReactorManager::SolveReactors()
     reactor_gpu_ptr_->SetIntOptions(int_options_);
     reactor_gpu_ptr_->SetDoubleOptions(double_options_);
 
-    std::vector<double> T_gpu(int_options_["n_reactors_max"]);
-    std::vector<double> T_gpu_init(int_options_["n_reactors_max"]);
-    std::vector<double> P_gpu(int_options_["n_reactors_max"]);
+    std::vector<double> T_gpu(n_reactors_max);
+    std::vector<double> T_gpu_init(n_reactors_max);
+    std::vector<double> P_gpu(n_reactors_max);
     std::vector<double> dpdt_gpu;
-    if(dpdt_defined_) dpdt_gpu.resize(int_options_["n_reactors_max"]);
+    if(dpdt_defined_) dpdt_gpu.resize(n_reactors_max);
     std::vector<double> e_src_gpu;
-    if(e_src_defined_) e_src_gpu.resize(int_options_["n_reactors_max"]);
+    if(e_src_defined_) e_src_gpu.resize(n_reactors_max);
     std::vector<double> y_src_gpu;
-    if(y_src_defined_) y_src_gpu.resize(num_species_*int_options_["n_reactors_max"]);
-    std::vector<double> mf_gpu(num_species_*int_options_["n_reactors_max"]);
+    if(y_src_defined_) y_src_gpu.resize(num_species_*n_reactors_max);
+    std::vector<double> mf_gpu(num_species_*n_reactors_max);
     int n_remaining = n_reactors_self_calc;
     while(n_remaining > 0) {
       int n_curr = 1;
-      n_curr = std::min(n_remaining, int_options_["n_reactors_max"]);
-      if(n_curr != n_remaining && n_remaining < 2*int_options_["n_reactors_max"] && n_curr == int_options_["n_reactors_max"]) {
+      n_curr = std::min(n_remaining, n_reactors_max);
+      if(n_curr != n_remaining && n_remaining < 2*n_reactors_max && n_curr == n_reactors_max) {
         n_curr = n_remaining/2;
       }
 
-      if(n_curr >= int_options_["n_reactors_min"]) {
-        if(int_options_["verbosity"] >= 2) {
+      if(n_curr >= n_reactors_min) {
+        if(verbosity >= 2) {
             printf("RANK[%d]: Solving GPU group of size = %d.\n", rank_,n_curr);
         }
         n_gpu_groups_++;
@@ -963,10 +970,10 @@ zerork_status_t ZeroRKReactorManager::SolveReactors()
             e_src_gpu[k_reactor_curr] = *e_src_ptrs[k_reactor];
           }
           for(int j = 0; j < num_species_; ++j) {
-            //Transpose mass fractions
-            mf_gpu[j*n_curr+k_reactor_curr] = mf_ptrs[k_reactor][j];
+            //mass fractions will be transposed in reactor InitializeState
+            mf_gpu[k_reactor_curr*num_species_+j] = mf_ptrs[k_reactor][j];
             if(y_src_defined_) {
-              y_src_gpu[j*n_curr+k_reactor_curr] = y_src_ptrs[k_reactor][j];
+              y_src_gpu[k_reactor_curr*num_species_+j] = y_src_ptrs[k_reactor][j];
             }
           }
           if(*temp_delta_ptrs[k_reactor] > 0.0 || always_solve_temp == 1) {
@@ -976,13 +983,13 @@ zerork_status_t ZeroRKReactorManager::SolveReactors()
 
         long int nstep_reactors;
         std::unique_ptr<SolverBase> solver;
-        if(int_options_["integrator"] == 0) {
+        if(integrator == 0) {
           solver.reset(new CvodeSolver(*reactor_gpu_ptr_));
-        } else if(int_options_["integrator"] == 1) {
+        } else if(integrator == 1) {
           solver.reset(new SeulexSolver(*reactor_gpu_ptr_));
-        } else if(int_options_["integrator"] == 2) {
+        } else if(integrator == 2) {
           solver.reset(new SodexSolver(*reactor_gpu_ptr_));
-        } else if(int_options_["integrator"] == 3) {
+        } else if(integrator == 3) {
           solver.reset(new RadauSolver(*reactor_gpu_ptr_));
         } else {
           throw(std::runtime_error("Invalid integrator specified for GPU"));
@@ -1028,18 +1035,17 @@ zerork_status_t ZeroRKReactorManager::SolveReactors()
             *T_ptrs[k_reactor] = T_gpu[k_reactor_curr];
             *P_ptrs[k_reactor] = P_gpu[k_reactor_curr];
             for(int j = 0; j < num_species_; ++j) {
-              //Transpose mass fractions
-              mf_ptrs[k_reactor][j] = mf_gpu[j*n_curr+k_reactor_curr];
+              mf_ptrs[k_reactor][j] = mf_gpu[k_reactor_curr*num_species_+j];
             }
             solved_gpu[k_reactor] = 1;
             *rc_ptrs[k_reactor] = nstep_reactors;
             *rg_ptrs[k_reactor] = reactor_time/n_curr*gpu_multiplier_;
 
             double temp_delta = T_gpu[k_reactor_curr] - T_gpu_init[k_reactor_curr];
-            if(temp_delta < double_options_["solve_temperature_threshold"]) temp_delta = 0.0;
+            if(temp_delta < solve_temp_threshold) temp_delta = 0.0;
             *temp_delta_ptrs[k_reactor] = temp_delta;
 
-            if(int_options_["dump_reactors"]!=0) {
+            if(dump_reactors) {
               DumpReactor("postg", k_reactor, *T_ptrs[k_reactor], *P_ptrs[k_reactor],
                           *rc_ptrs[k_reactor], *rg_ptrs[k_reactor], mf_ptrs[k_reactor]);
             }
@@ -1055,7 +1061,7 @@ zerork_status_t ZeroRKReactorManager::SolveReactors()
 
   //Instantiate reactors on first call, after options are set
   if(!reactor_ptr_) {
-    if(int_options_["constant_volume"] == 1) {
+    if(constant_volume) {
       reactor_ptr_ = std::make_unique<ReactorConstantVolumeCPU>(mech_ptr_);
     } else {
       reactor_ptr_ = std::make_unique<ReactorConstantPressureCPU>(mech_ptr_);
@@ -1066,13 +1072,13 @@ zerork_status_t ZeroRKReactorManager::SolveReactors()
   reactor_ptr_->SetDoubleOptions(double_options_);
 
   std::unique_ptr<SolverBase> solver;
-  if(int_options_["integrator"] == 0) {
+  if(integrator == 0) {
     solver.reset(new CvodeSolver(*reactor_ptr_));
-  } else if(int_options_["integrator"] == 1) {
+  } else if(integrator == 1) {
     solver.reset(new SeulexSolver(*reactor_ptr_));
-  } else if(int_options_["integrator"] == 2) {
+  } else if(integrator == 2) {
     solver.reset(new SodexSolver(*reactor_ptr_));
-  } else if(int_options_["integrator"] == 3) {
+  } else if(integrator == 3) {
     solver.reset(new RadauSolver(*reactor_ptr_));
   } else {
     throw(std::runtime_error("Invalid integrator specified"));
@@ -1131,7 +1137,7 @@ zerork_status_t ZeroRKReactorManager::SolveReactors()
         *root_times_ptrs[k] = reactor_ptr_->GetRootTime();
         n_steps_cpu_ += nsteps;
         double temp_delta = *T_ptrs[k] - T_init;
-        if(temp_delta < double_options_["solve_temperature_threshold"]) temp_delta = 0.0;
+        if(temp_delta < solve_temp_threshold) temp_delta = 0.0;
         *temp_delta_ptrs[k] = temp_delta;
       }
       *rc_ptrs[k] = nsteps;
@@ -1139,7 +1145,7 @@ zerork_status_t ZeroRKReactorManager::SolveReactors()
       sum_cpu_reactor_time_ += reactor_time;
       ++n_cpu_solve_;
       if(!solve_temperature) ++n_cpu_solve_no_temperature_;
-      if(int_options_["dump_reactors"]!=0) {
+      if(dump_reactors) {
         DumpReactor("postc", k, *T_ptrs[k], *P_ptrs[k],
                     *rc_ptrs[k], *rg_ptrs[k], mf_ptrs[k]);
       }
