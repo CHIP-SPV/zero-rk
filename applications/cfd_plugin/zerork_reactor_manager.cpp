@@ -662,17 +662,21 @@ zerork_status_t ZeroRKReactorManager::LoadBalance()
     return ZERORK_STATUS_SUCCESS;
   }
 
+  int const load_balance = int_options_["load_balance"];
+  int const load_balance_noise = int_options_["load_balance_noise"];
+  int const reactor_weight_mult = int_options_["reactor_weight_mult"];
+
   int n_weighted_reactors = 0;
   std::vector<int> weighted_reactors_on_rank(nranks_,0);
-  if(int_options_["load_balance"] == 1) {
+  if(load_balance == 1) {
     for(int k = 0; k < n_reactors_self_; ++k) {
       if(rc_self_[k] <= 0.0) rc_self_[k] = 1.0;
-      n_weighted_reactors += std::max((int)rc_self_[k],1)+int_options_["load_balance_noise"];
+      n_weighted_reactors += std::max((int)rc_self_[k],1)+load_balance_noise;
     }
-  } else if (int_options_["load_balance"] == 2) {
+  } else if (load_balance == 2) {
     for(int k = 0; k < n_reactors_self_; ++k) {
         if(rg_self_[k] <= 0.0) rg_self_[k] = avg_reactor_time_;
-        int weighted = (int)(int_options_["reactor_weight_mult"]*rg_self_[k]/avg_reactor_time_);
+        int weighted = (int)(reactor_weight_mult*rg_self_[k]/avg_reactor_time_);
         n_weighted_reactors += std::max(weighted,1);
     }
   }
@@ -789,10 +793,10 @@ zerork_status_t ZeroRKReactorManager::LoadBalance()
           while(send_count < send_weighted_nreactors && send_idx>0) {
             send_idx -= 1;
             size_t sorted_reactor_idx = sorted_reactor_idxs_[send_idx];
-            if(int_options_["load_balance"] == 1) {
-              send_count += std::max((int)rc_self_[sorted_reactor_idx],1)+int_options_["load_balance_noise"];
-            } else if(int_options_["load_balance"] == 2) {
-              int weighted = (int) (int_options_["reactor_weight_mult"]*rg_self_[sorted_reactor_idx]/avg_reactor_time_);
+            if(load_balance == 1) {
+              send_count += std::max((int)rc_self_[sorted_reactor_idx],1)+load_balance_noise;
+            } else if(load_balance == 2) {
+              int weighted = (int) (reactor_weight_mult*rg_self_[sorted_reactor_idx]/avg_reactor_time_);
               send_count += std::max(weighted,1);
             }
             send_reactor_idxs.push_back(sorted_reactor_idx);
@@ -846,6 +850,10 @@ zerork_status_t ZeroRKReactorManager::SolveReactors()
   n_gpu_solve_no_temperature_ = 0;
 
   int always_solve_temp = int_options_["always_solve_temperature"];
+
+  int const dump_reactors = int_options_["dump_reactors"];
+  double const solve_temperature_threshold =
+      double_options_["solve_temperature_threshold"];
 
   int n_reactors_self_calc = n_reactors_self_ + n_reactors_other_;
   std::vector<int> solved_gpu(n_reactors_self_calc, 0);
@@ -901,7 +909,7 @@ zerork_status_t ZeroRKReactorManager::SolveReactors()
       temp_delta_ptrs[j] = &temp_delta_other_[j_sort];
       mf_ptrs[j] = &mf_other_[j_sort*num_species_];
     }
-    if(int_options_["dump_reactors"]!=0) {
+    if(dump_reactors != 0) {
       DumpReactor("pre", j, *T_ptrs[j], *P_ptrs[j], *rc_ptrs[j], *rg_ptrs[j], mf_ptrs[j]);
     }
   }
@@ -1036,10 +1044,10 @@ zerork_status_t ZeroRKReactorManager::SolveReactors()
             *rg_ptrs[k_reactor] = reactor_time/n_curr*gpu_multiplier_;
 
             double temp_delta = T_gpu[k_reactor_curr] - T_gpu_init[k_reactor_curr];
-            if(temp_delta < double_options_["solve_temperature_threshold"]) temp_delta = 0.0;
+            if(temp_delta < solve_temperature_threshold) temp_delta = 0.0;
             *temp_delta_ptrs[k_reactor] = temp_delta;
 
-            if(int_options_["dump_reactors"]!=0) {
+            if(dump_reactors != 0) {
               DumpReactor("postg", k_reactor, *T_ptrs[k_reactor], *P_ptrs[k_reactor],
                           *rc_ptrs[k_reactor], *rg_ptrs[k_reactor], mf_ptrs[k_reactor]);
             }
@@ -1131,7 +1139,7 @@ zerork_status_t ZeroRKReactorManager::SolveReactors()
         *root_times_ptrs[k] = reactor_ptr_->GetRootTime();
         n_steps_cpu_ += nsteps;
         double temp_delta = *T_ptrs[k] - T_init;
-        if(temp_delta < double_options_["solve_temperature_threshold"]) temp_delta = 0.0;
+        if(temp_delta < solve_temperature_threshold) temp_delta = 0.0;
         *temp_delta_ptrs[k] = temp_delta;
       }
       *rc_ptrs[k] = nsteps;
@@ -1139,7 +1147,7 @@ zerork_status_t ZeroRKReactorManager::SolveReactors()
       sum_cpu_reactor_time_ += reactor_time;
       ++n_cpu_solve_;
       if(!solve_temperature) ++n_cpu_solve_no_temperature_;
-      if(int_options_["dump_reactors"]!=0) {
+      if(dump_reactors != 0) {
         DumpReactor("postc", k, *T_ptrs[k], *P_ptrs[k],
                     *rc_ptrs[k], *rg_ptrs[k], mf_ptrs[k]);
       }
