@@ -12,9 +12,11 @@ class hip_la_manager
   int solve(int num_batches, int n, const T* rhs, T* soln);
 
   void set_lu(bool val) {use_lu_ = val;};
+  void set_pivoting(bool val) {pivoting_ = val;};
 
  protected:
-  bool use_lu_; 
+  bool use_lu_;
+  bool pivoting_;
 
   virtual int factor_invert(int num_batches, int n, T* values) = 0;
   virtual int factor_lu(int num_batches, int n, T* values) = 0;

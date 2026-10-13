@@ -24,14 +24,6 @@ set(COMMON_SRCS utility_funcs.cpp
 
 
 if(ZERORK_ENABLE_SUNDIALS_LAPACK)
-  #In principle this should be somewhere higher up, but here is OK for now 
-  include(FortranCInterface)
-  FortranCInterface_HEADER(
-    blas_stubs.h
-    SYMBOLS DSCAL DCOPY DAXPY DGEMV
-            SSCAL SCOPY SAXPY SGEMV
-  )
-
   list(APPEND COMMON_SRCS interfaces/zrkmatrix/zrkmatrix_lapackdense.c)
 endif()
 
@@ -87,16 +79,16 @@ install(TARGETS zerork_cfd_plugin_tester.x
 
 if(ENABLE_GPU)
 if(${SUNDIALS_VERSION} EQUAL "5")
-  set(GPU_SRCS reactor_constant_volume_gpu.hip
-               reactor_constant_pressure_gpu.hip
-               reactor_nvector_serial_gpu.hip
-               interfaces/hip_la_manager/hip_la_manager.hip
-               interfaces/hipblas_manager/hipblas_manager.hip
-               interfaces/hipsolver_rf_manager/hipsolver_rf_manager.hip
-               gpu_transpose.hip)
+  set(GPU_SRCS reactor_constant_volume_gpu.cpp
+               reactor_constant_pressure_gpu.cpp
+               reactor_nvector_serial_gpu.cpp
+               interfaces/hip_la_manager/hip_la_manager.cpp
+               interfaces/hipblas_manager/hipblas_manager.cpp
+               interfaces/hipsolver_rf_manager/hipsolver_rf_manager.cpp
+               gpu_transpose.cpp)
   if(${ZERORK_HAVE_MAGMA})
-    list(APPEND GPU_SRCS interfaces/zrklinsol/zrklinsol_magmadense.hip
-                         interfaces/magma_manager/magma_manager.hip)
+    list(APPEND GPU_SRCS interfaces/zrklinsol/zrklinsol_magmadense.cpp
+                         interfaces/magma_manager/magma_manager.cpp)
   endif()
 
   if(ENABLE_MPI)
@@ -113,12 +105,12 @@ if(${SUNDIALS_VERSION} EQUAL "5")
   if(${ZERORK_HAVE_HIPSOLVERRF})
     target_compile_definitions(zerork_cfd_plugin_gpu PRIVATE HAVE_HIPSOLVERRF)
   endif()
-
-  set_source_files_properties(zerork_reactor_manager.cpp TARGET_DIRECTORY zerork_cfd_plugin_gpu PROPERTIES LANGUAGE HIP)
-  set_source_files_properties(solver_cvode.cpp TARGET_DIRECTORY zerork_cfd_plugin_gpu PROPERTIES LANGUAGE HIP)
+  if(${ZERORK_HAVE_RMM_DEVICE_VECTOR})
+    target_compile_definitions(zerork_cfd_plugin_gpu PRIVATE ZERORK_HAVE_RMM_DEVICE_VECTOR)
+  endif()
 
   target_link_libraries(zerork_cfd_plugin_gpu zerork_cuda zerork zerorkutilities superlu spify
-                        sundials_nvechip sundials_cvode sundials_nvecserial hipblas hipsparse hipsolver hip-lang::device)
+                        sundials_nvechip sundials_cvode sundials_nvecserial hipblas hipsparse hipsolver)
   if(${ZERORK_ENABLE_SUNDIALS_LAPACK})
     target_link_libraries(zerork_cfd_plugin_gpu sundials_sunlinsollapackdense)
   endif()

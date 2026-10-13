@@ -351,67 +351,68 @@ int main(int argc, char *argv[])
   hipMemcpy(systemParam.Dens_dev,systemParam.Dens,sizeof(double)*nReactors,hipMemcpyHostToDevice);
   hipMemcpy(systemParam.invDens_dev,systemParam.invDens,sizeof(double)*nReactors,hipMemcpyHostToDevice);
 
- N_Vector systemState;
- N_Vector systemDeriv;
+  N_Vector systemState;
+  N_Vector systemDeriv;
 
- N_Vector systemStateIns[nReactors];
- N_Vector systemDerivIns[nReactors];
+  N_Vector systemStateIns[nReactors];
+  N_Vector systemDerivIns[nReactors];
   
- systemState=N_VNew_Serial((nSpc+1)*nReactors);
- systemDeriv=N_VNew_Serial((nSpc+1)*nReactors);
+  systemState=N_VNew_Serial((nSpc+1)*nReactors);
+  systemDeriv=N_VNew_Serial((nSpc+1)*nReactors);
 
- for(k=0; k<nReactors; k++)
- {
-     systemStateIns[k]=N_VNew_Serial((nSpc+1));
-     systemDerivIns[k]=N_VNew_Serial((nSpc+1));
- }
+  for(k=0; k<nReactors; k++)
+  {
+      systemStateIns[k]=N_VNew_Serial((nSpc+1));
+      systemDerivIns[k]=N_VNew_Serial((nSpc+1));
+  }
 
- //systemState in data order
- for(j=0; j<nSpc; j++)
- {
-     for(k=0; k<nReactors; k++)
-     {
-         NV_Ith_S(systemState,j*nReactors+k)=massFrac[k*nSpc+j];
-         NV_Ith_S((systemStateIns[k]),j)=massFrac[k*nSpc+j];
-     }
- }
- for(k=0; k<nReactors; k++)
- {
-     NV_Ith_S(systemState,nSpc*nReactors+k)=Temp_array[k]/systemParam.Tref;
-     NV_Ith_S((systemStateIns[k]),nSpc)=Temp_array[k]/systemParam.Tref;
- }
+  //systemState in data order
+  for(j=0; j<nSpc; j++)
+  {
+      for(k=0; k<nReactors; k++)
+      {
+          NV_Ith_S(systemState,j*nReactors+k)=massFrac[k*nSpc+j];
+          NV_Ith_S((systemStateIns[k]),j)=massFrac[k*nSpc+j];
+      }
+  }
+  for(k=0; k<nReactors; k++)
+  {
+      NV_Ith_S(systemState,nSpc*nReactors+k)=Temp_array[k]/systemParam.Tref;
+      NV_Ith_S((systemStateIns[k]),nSpc)=Temp_array[k]/systemParam.Tref;
+  }
 
 
- startTime=getHighResolutionTime();
- for( k = 0; k < nEval; ++k)
- {
+  startTime=getHighResolutionTime();
+  for( k = 0; k < nEval; ++k)
+  {
      for(j=0; j<nReactors; ++j)
      {
           // calculate the ODE RHS
           systemParam.currReactor = j;
           const_vol_wsr(0.0, systemStateIns[j], systemDerivIns[j], (void *)&systemParam);
      }
- }
- stopTime=getHighResolutionTime();
- printf("# Elapsed time for %d*%d dy/dt calls on CPU [s]: %16.8e\n",nReactors,nEval,
-	stopTime-startTime);
+  }
+  stopTime=getHighResolutionTime();
+  double cpuTime = stopTime-startTime;
+  printf("# Elapsed time for %d*%d dy/dt calls on CPU [s]: %16.8e\n",nReactors,nEval, cpuTime);
 
 
- startTime=getHighResolutionTime();
- for(j=0; j<nEval; ++j)
-    {
-          // calculate the ODE RHS
-          const_vol_wsr_mr_dev(0.0, systemState, systemDeriv, (void *)&systemParam);
-    }
+  startTime=getHighResolutionTime();
+  for(j=0; j<nEval; ++j)
+     {
+           // calculate the ODE RHS
+           const_vol_wsr_mr_dev(0.0, systemState, systemDeriv, (void *)&systemParam);
+     }
 
- stopTime=getHighResolutionTime();
- printf("# Elapsed time for %d*%d dy/dt calls on GPU [s]: %16.8e\n",nReactors,nEval,
-	stopTime-startTime);
+  stopTime=getHighResolutionTime();
+  double gpuTime = stopTime-startTime;
+  printf("# Elapsed time for %d*%d dy/dt calls on GPU [s]: %16.8e\n",nReactors,nEval, gpuTime);
 
 
   //Test GPU_dev results
   const int max_diff_print = 50;
   const double thresh = 1.0e-10;
+  const double cutoff = 1.0e-30;
   int diffcount = 0;
   for( k=0; k<nReactors; ++k)
   {  
@@ -421,7 +422,7 @@ int main(int argc, char *argv[])
           cpu_val = NV_Ith_S(systemDerivIns[k],j);
           gpu_val = NV_Ith_S(systemDeriv,j*nReactors+k);
           
-          diff = fabs((cpu_val-gpu_val)/(cpu_val+gpu_val));
+          diff = fabs((cpu_val-gpu_val)/(cpu_val+gpu_val+cutoff));
           if( diff > thresh )
           {
                printf("Diff in system derivative [%d,%d]: %g, %g, %g\n",k,j,cpu_val,gpu_val,diff);
@@ -432,6 +433,7 @@ int main(int argc, char *argv[])
       if(diffcount > max_diff_print) break;      
   }  
 
+  printf(" +++ %d  %d  %g \n",nSpc,nReactors,cpuTime/gpuTime);
 
   //Clean-up
   delete mech;
@@ -633,35 +635,23 @@ int const_vol_wsr_mr_dev(realtype t, N_Vector y, N_Vector ydot,
 
   hipMemcpy(cvp->y_dev,NV_DATA_S(y),sizeof(double)*nSize*nReactors,hipMemcpyHostToDevice);
   hipMemcpy(cvp->reactorTemps_dev,&(cvp->y_dev[nSpc*nReactors]),sizeof(double)*nReactors,hipMemcpyDeviceToDevice);
-//  double *Temp_dev = &(cvp->y_dev[nSpc*nReactors]);
-//  checkCudaError(hipGetLastError(),"wsr_memcpy");
 
   // set concentration via density and mass fraction
   cvp->mech->getCfromVY_mr_dev(nReactors,cvp->invDens_dev,cvp->y_dev,cvp->conc_dev);
-//  hipDeviceSynchronize();
-//  checkCudaError(hipGetLastError(),"wsr_CfromVY");
 
   // set temperature
   nThreads = 1024;
   nBlocks = (nReactors + nThreads -1)/nThreads;
   multiplyElements<<<nBlocks,nThreads>>>(nReactors,cvp->Tref,cvp->reactorTemps_dev);
-//  hipDeviceSynchronize();
-//  checkCudaError(hipGetLastError(),"wsr_multiplyElems");
 
   // compute the molar production rates at the current state (aka wdot)
   cvp->mech->getReactionRates_CUDA_mr_dev(nReactors,cvp->reactorTemps_dev,
                                                     cvp->conc_dev,cvp->netProd_dev,
                                                     cvp->createRate_dev,cvp->destroyRate_dev,
                                                     cvp->fwdROP_dev);
-//  hipDeviceSynchronize();
-//  checkCudaError(hipGetLastError(),"wsr_getReactionRates");
 
   cvp->mech->getIntEnergy_RT_mr_dev(nReactors,cvp->reactorTemps_dev,cvp->Energy_dev);
-//  hipDeviceSynchronize();
-//  checkCudaError(hipGetLastError(),"wsr_getIntEnergy");
   cvp->mech->getMassCvFromTY_mr_dev(nReactors,cvp->reactorTemps_dev,cvp->y_dev,cvp->CvMass_dev,cvp->meanCvMass_dev);
-//  hipDeviceSynchronize();
-//  checkCudaError(hipGetLastError(),"wsr_getMassCv");
 
   // ydot = [kmol/m^3/s] * [kg/kmol] * [m^3/kg] = [(kg spec j)/(kg mix)/s]
   nThreads2D.x = 1;
@@ -670,9 +660,6 @@ int const_vol_wsr_mr_dev(realtype t, N_Vector y, N_Vector ydot,
   nBlocks2D.y = (nReactors+nThreads2D.y-1)/nThreads2D.y;
 
   cv_wsr_conc_deriv<<<nBlocks2D,nThreads2D,0,cvp->concDerivStream>>>(nReactors,nSpc,cvp->netProd_dev,cvp->molWt_dev,cvp->invDens_dev,cvp->ydot_dev);   
-//  hipDeviceSynchronize();
-//  checkCudaError(hipGetLastError(),"wsr_conc_deriv");
-
 
   hipMemset(&(cvp->ydot_dev[nReactors*nSpc]),0,sizeof(double)*nReactors);
   nThreads = 1024;
@@ -680,101 +667,8 @@ int const_vol_wsr_mr_dev(realtype t, N_Vector y, N_Vector ydot,
   cv_wsr_T_deriv<<<nBlocks,nThreads,sizeof(double)*nThreads,cvp->TDerivStream>>>(nReactors,nSpc,cvp->mech->getGasConstant(),
                                        cvp->Energy_dev,cvp->netProd_dev,cvp->invDens_dev,
                                        cvp->meanCvMass_dev,cvp->y_dev,cvp->ydot_dev);
-//  hipDeviceSynchronize();
-//  checkCudaError(hipGetLastError(),"wsr_T_deriv");
 
   hipMemcpy(NV_DATA_S(ydot),cvp->ydot_dev,sizeof(double)*nSize*nReactors,hipMemcpyDeviceToHost);
-//  hipDeviceSynchronize();
-//  checkCudaError(hipGetLastError(),"wsr_memcpy2");
-
-// TESTING CODE
-/*
-  int j,k;
-
-  int nStep = cvp->mech->getNumSteps();
-  double mfp_ins[nReactors*cvp->nSpc];
-  double conc_cpu[nReactors*cvp->nSpc];
-  double netRates_cpu[nReactors*cvp->nSpc];
-  double createRates_cpu[nReactors*cvp->nSpc];
-  double destroyRates_cpu[nReactors*cvp->nSpc];
-  double fwdROP_cpu[nReactors*nStep];
-  double energy_cpu[nReactors*cvp->nSpc];
-  double cv_cpu[nReactors*cvp->nSpc];
-  double meancv_cpu[nReactors];
-  double Temp[nReactors];
-  for(k=0;k<nReactors;++k)
-  {
-      for(j=0;j<cvp->nSpc; ++j)
-      {
-          mfp_ins[cvp->nSpc*k+j] = NV_Ith_S(y,j*nReactors+k);
-      }
-      Temp[k] = NV_Ith_S(y,nSpc*nReactors+k)*cvp->Tref;
-  }
-  for(k=0;k<nReactors;++k)
-  {
-      cvp->mech->getCfromVY(cvp->invDens[k],&(mfp_ins[cvp->nSpc*k]),&(conc_cpu[cvp->nSpc*k]));
-      cvp->mech->getReactionRates(Temp[k],&(conc_cpu[cvp->nSpc*k]),&(netRates_cpu[cvp->nSpc*k]),
-                                                   &(createRates_cpu[cvp->nSpc*k]),
-                                                   &(destroyRates_cpu[cvp->nSpc*k]),
-                                                   &(fwdROP_cpu[nStep*k]));
-      cvp->mech->getIntEnergy_RT(Temp[k],&(energy_cpu[cvp->nSpc*k]));
-      meancv_cpu[k] = cvp->mech->getMassCvFromTY(Temp[k],&(mfp_ins[cvp->nSpc*k]),&(cv_cpu[cvp->nSpc*k]));
-  }
-
-  hipMemcpy(cvp->conc,cvp->conc_dev,sizeof(double)*nSpc*nReactors,hipMemcpyDeviceToHost);
-  hipMemcpy(cvp->netProd,cvp->netProd_dev,sizeof(double)*nSpc*nReactors,hipMemcpyDeviceToHost);
-  hipMemcpy(cvp->Energy,cvp->Energy_dev,sizeof(double)*nSpc*nReactors,hipMemcpyDeviceToHost);
-  hipMemcpy(cvp->CvMass,cvp->CvMass_dev,sizeof(double)*nSpc*nReactors,hipMemcpyDeviceToHost);
-  hipMemcpy(cvp->meanCvMass,cvp->meanCvMass_dev,sizeof(double)*nReactors,hipMemcpyDeviceToHost);
-
-  double diff= 1.0;
-  double cpu_val,gpu_val;
-  double maxdiff = 1.0e-10; 
-  int diffcount = 0;
-  int maxprintdiff = 50;
-  for(k=0;k<nReactors;++k)
-  {
-      for(j=0;j<cvp->nSpc; ++j)
-      {
-          cpu_val = conc_cpu[cvp->nSpc*k + j];
-          gpu_val = cvp->conc[nReactors*j + k];
-          diff = fabs(cpu_val-gpu_val)/fabs(cpu_val+gpu_val);
-          if(diff > maxdiff)
-          {
-              printf(" diff in conc[%d,%d] : %g %g %g.\n",k,j,cpu_val,gpu_val,diff);
-          }
-          cpu_val = netRates_cpu[cvp->nSpc*k + j];
-          gpu_val = cvp->netProd[nReactors*j + k];
-          diff = fabs(cpu_val-gpu_val)/fabs(cpu_val+gpu_val);
-          if(diff > maxdiff)
-          {
-              printf(" diff in netRates[%d,%d] : %g %g %g.\n",k,j,cpu_val,gpu_val,diff);
-          }
-          cpu_val = energy_cpu[cvp->nSpc*k + j];
-          gpu_val = cvp->Energy[nReactors*j + k];
-          diff = fabs(cpu_val-gpu_val)/fabs(cpu_val+gpu_val);
-          if(diff > maxdiff)
-          {
-              printf(" diff in energy[%d,%d] : %g %g %g.\n",k,j,cpu_val,gpu_val,diff);
-          }
-          cpu_val = cv_cpu[cvp->nSpc*k + j];
-          gpu_val = cvp->CvMass[nReactors*j + k];
-          diff = fabs(cpu_val-gpu_val)/fabs(cpu_val+gpu_val);
-          if(diff > maxdiff)
-          {
-              printf(" diff in cv[%d,%d] : %g %g %g.\n",k,j,cpu_val,gpu_val,diff);
-          }
-      }
-      cpu_val = meancv_cpu[k];
-      gpu_val = cvp->meanCvMass[k];
-      diff = fabs(cpu_val-gpu_val)/fabs(cpu_val+gpu_val);
-      if(diff > maxdiff)
-      {
-          printf(" diff in meancv[%d] : %g %g %g.\n",k,cpu_val,gpu_val,diff);
-      }
-  }
-*/
-// END TESTING CODE
 
   (cvp->nFunc)++;
   cvp->funcTime += getHighResolutionTime() - startTime;

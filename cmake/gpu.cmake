@@ -2,9 +2,12 @@
 option(ENABLE_GPU "Enable CUDA libraries and applications." OFF)
 cmake_dependent_option(ENABLE_MAGMA "Enable MAGMA GPU library" ON "ENABLE_GPU" OFF)
 cmake_dependent_option(ENABLE_HIPSOLVERRF "Enable hipSolverRf library" OFF "ENABLE_GPU" OFF)
+
 if(${ENABLE_GPU})
   set(CMAKE_HIP_HOST_COMPILER ${CMAKE_CXX_COMPILER})
-  enable_language(HIP)
+  find_package(HIP REQUIRED)
+  message(STATUS "HIP_VERSION: ${HIP_VERSION}")
+
   if(NOT DEFINED CMAKE_HIP_ARCHITECTURES)
     set(CMAKE_HIP_ARCHITECTURES gfx90a gfx942)
   endif()
@@ -16,8 +19,6 @@ if(${ENABLE_GPU})
     include(cmake/magma.cmake)
     set(ZERORK_HAVE_MAGMA ON)
   endif()
-  find_package(HIP) # just to get HIP_VERSION
-  message(STATUS "HIP_VERSION: ${HIP_VERSION}")
   if(HIP_VERSION)
     string(REPLACE "." ";" _hip_version_list "${HIP_VERSION}")
     list(GET _hip_version_list 0 HIP_VERSION_MAJOR)
@@ -34,5 +35,7 @@ if(${ENABLE_GPU})
       message(WARNING "ENABLE_HIPSOLVERRF set ON, but not supported in HIP version ${HIP_VERSION}")
     endif()
   endif()
+
+  option(ZERORK_HAVE_RMM_DEVICE_VECTOR "Toggle for RMM Device Vector in cfd_plugin" OFF)
 endif()
 

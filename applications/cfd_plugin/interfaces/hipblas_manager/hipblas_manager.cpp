@@ -4,11 +4,45 @@
 #include "hipblas_manager.h"
 
 
+static const char* hipblas_status_str(hipblasStatus_t s) {
+  switch (s) {
+    case HIPBLAS_STATUS_SUCCESS:          return "HIPBLAS_STATUS_SUCCESS";
+    case HIPBLAS_STATUS_NOT_INITIALIZED:  return "HIPBLAS_STATUS_NOT_INITIALIZED";
+    case HIPBLAS_STATUS_ALLOC_FAILED:     return "HIPBLAS_STATUS_ALLOC_FAILED";
+    case HIPBLAS_STATUS_INVALID_VALUE:    return "HIPBLAS_STATUS_INVALID_VALUE";
+    case HIPBLAS_STATUS_MAPPING_ERROR:    return "HIPBLAS_STATUS_MAPPING_ERROR";
+    case HIPBLAS_STATUS_EXECUTION_FAILED: return "HIPBLAS_STATUS_EXECUTION_FAILED";
+    case HIPBLAS_STATUS_INTERNAL_ERROR:   return "HIPBLAS_STATUS_INTERNAL_ERROR";
+    case HIPBLAS_STATUS_NOT_SUPPORTED:    return "HIPBLAS_STATUS_NOT_SUPPORTED";
+    case HIPBLAS_STATUS_ARCH_MISMATCH:    return "HIPBLAS_STATUS_ARCH_MISMATCH";
+    case HIPBLAS_STATUS_HANDLE_IS_NULLPTR:return "HIPBLAS_STATUS_HANDLE_IS_NULLPTR";
+    case HIPBLAS_STATUS_INVALID_ENUM:     return "HIPBLAS_STATUS_INVALID_ENUM";
+    default:                              return "HIPBLAS_STATUS_UNKNOWN";
+  }
+}
+
+#define HIPBLAS_CHECK(cmd) do {                 \
+  hipblasStatus_t s = (cmd);                    \
+if (s != HIPBLAS_STATUS_SUCCESS) {              \
+    fprintf(stderr, "HIP error at %s:%d\n",     \
+            __FILE__, __LINE__);                \
+    exit(1);                                    \
+  }                                             \
+} while (0)
+
+
 template<typename T>
 hipblas_manager<T>::hipblas_manager() :
   n_(-1),
   num_batches_(-1),
-  factored_(false)
+  factored_(false),
+  info_dev_(),
+  ipiv_dev_(),
+  tmp_dev_(),
+  matrix_inverse_dev_(),
+  matrix_inverse_pointers_dev_(),
+  matrix_pointers_dev_(),
+  tmp_pointers_dev_()
 {
   hipblasCreate(&hipblas_handle_);
 }
@@ -38,80 +72,107 @@ void hipblas_manager<T>::AllocateDeviceMemory()
   hipDeviceSynchronize();
   gpu_err_check(hipGetLastError());
 
-  gpu_err_check(hipMalloc((void**)&matrix_inverse_dev_,sizeof(T)*(n_*n_*num_batches_)));
-  gpu_err_check(hipMalloc((void**)&matrix_inverse_pointers_dev_,sizeof(T*)*num_batches_));
-  gpu_err_check(hipMalloc((void**)&matrix_pointers_dev_,sizeof(T*)*num_batches_));
-  gpu_err_check(hipMalloc((void**)&info_dev_,sizeof(int)*num_batches_));
-  gpu_err_check(hipMalloc((void**)&tmp_dev_,sizeof(T)*num_batches_*n_));
-  gpu_err_check(hipMalloc((void**)&tmp_pointers_dev_,sizeof(T*)*num_batches_));
+  matrix_inverse_dev_.resize(n_*n_*num_batches_);
+  matrix_inverse_pointers_dev_.resize(num_batches_);
+  matrix_pointers_dev_.resize(num_batches_);
+  info_dev_.resize(num_batches_);
+  tmp_dev_.resize(num_batches_*n_);
+  tmp_pointers_dev_.resize(num_batches_);
 
   data_ptrs_.resize(num_batches_);
   tmp_ptrs_.resize(num_batches_);
 
   for(int j = 0; j < num_batches_; ++j) {
-    data_ptrs_[j] = matrix_inverse_dev_ + j*n_*n_;
+    data_ptrs_[j] = thrust::raw_pointer_cast(matrix_inverse_dev_.data()) + j*n_*n_;
   }
-  hipMemcpy(matrix_inverse_pointers_dev_, data_ptrs_.data(), sizeof(T*)*num_batches_, hipMemcpyHostToDevice);
+  hipMemcpy(thrust::raw_pointer_cast(matrix_inverse_pointers_dev_.data()), data_ptrs_.data(), sizeof(T*)*num_batches_, hipMemcpyHostToDevice);
   gpu_err_check(hipGetLastError());
 
   for(int j = 0; j < num_batches_; ++j) {
-    tmp_ptrs_[j] = tmp_dev_ + j*n_;
+    tmp_ptrs_[j] = thrust::raw_pointer_cast(tmp_dev_.data()) + j*n_;
   }
-  hipMemcpy(tmp_pointers_dev_, tmp_ptrs_.data(), sizeof(T*)*num_batches_, hipMemcpyHostToDevice);
+  hipMemcpy(thrust::raw_pointer_cast(tmp_pointers_dev_.data()), tmp_ptrs_.data(), sizeof(T*)*num_batches_, hipMemcpyHostToDevice);
   gpu_err_check(hipGetLastError());
+
+  ipiv_dev_.resize(n_*num_batches_);
+  if(!(this->pivoting_)) {
+    std::vector<int> ipiv_host(n_*num_batches_);
+    for(int j = 0; j < num_batches_; ++j) {
+      for(int i = 0; i < n_; ++i) {
+        ipiv_host[j*n_ + i] = i + 1;
+      }
+    }
+    hipMemcpy(thrust::raw_pointer_cast(ipiv_dev_.data()), ipiv_host.data(), sizeof(int)*n_*num_batches_, hipMemcpyHostToDevice);
+    gpu_err_check(hipGetLastError());
+  }
 }
 
 template<typename T>
 void hipblas_manager<T>::FreeDeviceMemory()
 {
-  hipFree(matrix_inverse_dev_);
-  hipFree(matrix_inverse_pointers_dev_);
-  hipFree(matrix_pointers_dev_);
-  hipFree(info_dev_);
-  hipFree(tmp_dev_);
-  hipFree(tmp_pointers_dev_);
 }
 
 template<>
 void hipblas_manager<double>::getrf_batched() {
   int lda = n_;
   int* ipiv = NULL; //Turns off pivoting
-  hipblasDgetrfBatched(hipblas_handle_, n_,
-                       matrix_pointers_dev_, lda,
-                       ipiv, info_dev_, num_batches_);
+  hipblasStride strideP = n_;
+  if(pivoting_) {
+    ipiv = thrust::raw_pointer_cast(ipiv_dev_.data());
+  }
+  // Matrices are contiguous by construction (data_ptrs_[j] = base + j*n*n,
+  // lda = n), so use the strided API: pass the base device pointer + a uniform
+  // stride instead of the pointer array. strideP = 0 since pivoting is off.
+  double* A_base = data_ptrs_[0];
+  hipblasStride strideA = (hipblasStride)n_ * n_;
+  //N.B. The strided batched version doesn't exist on CUDA
+  HIPBLAS_CHECK(hipblasDgetrfStridedBatched(hipblas_handle_, n_,
+                A_base, lda, strideA, ipiv, strideP,
+                thrust::raw_pointer_cast(info_dev_.data()), num_batches_));
 }
 
 template<>
 void hipblas_manager<double>::getri_batched() {
   int lda = n_;
   int* ipiv = NULL; //Turns off pivoting
+  if(pivoting_) {
+    ipiv = thrust::raw_pointer_cast(ipiv_dev_.data());
+  }
   int ldc = n_;
-  double* const* const_matrix_pointers_dev = (double* const*) matrix_pointers_dev_;
-  hipblasDgetriBatched(hipblas_handle_, n_, const_matrix_pointers_dev,
-                       lda, ipiv, matrix_inverse_pointers_dev_,
-                       ldc, info_dev_, num_batches_);
+  double* const* const_matrix_pointers_dev = (double* const*) thrust::raw_pointer_cast(matrix_pointers_dev_.data());
+  HIPBLAS_CHECK(hipblasDgetriBatched(hipblas_handle_, n_, const_matrix_pointers_dev,
+                       lda, ipiv, thrust::raw_pointer_cast(matrix_inverse_pointers_dev_.data()),
+                       ldc, thrust::raw_pointer_cast(info_dev_.data()), num_batches_));
 }
 
 template<>
 void hipblas_manager<hipDoubleComplex>::getrf_batched() {
   int lda = n_;
   int* ipiv = NULL; //Turns off pivoting
-  hipblasDoubleComplex* const* const_matrix_pointers_dev = (hipblasDoubleComplex* const*) matrix_pointers_dev_;
-  hipblasZgetrfBatched(hipblas_handle_, n_,
-                       const_matrix_pointers_dev, lda,
-                       ipiv, info_dev_, num_batches_);
+  hipblasStride strideP = n_;
+  if(pivoting_) {
+    ipiv = thrust::raw_pointer_cast(ipiv_dev_.data());
+  }
+  hipblasDoubleComplex* A_base = (hipblasDoubleComplex*) data_ptrs_[0];
+  hipblasStride strideA = (hipblasStride)n_ * n_;
+  HIPBLAS_CHECK(hipblasZgetrfStridedBatched(hipblas_handle_, n_,
+                                     A_base, lda, strideA, ipiv, strideP,
+				     thrust::raw_pointer_cast(info_dev_.data()), num_batches_));
 }
 
 template<>
 void hipblas_manager<hipDoubleComplex>::getri_batched() {
   int lda = n_;
   int* ipiv = NULL; //Turns off pivoting
+  if(pivoting_) {
+    ipiv = thrust::raw_pointer_cast(ipiv_dev_.data());
+  }
   int ldc = n_;
-  hipblasDoubleComplex* const* const_matrix_pointers_dev = (hipblasDoubleComplex* const*) matrix_pointers_dev_;
-  hipblasDoubleComplex* const* const_matrix_inverse_pointers_dev = (hipblasDoubleComplex* const*) matrix_inverse_pointers_dev_;
-  hipblasZgetriBatched(hipblas_handle_, n_, const_matrix_pointers_dev,
+  hipblasDoubleComplex* const* const_matrix_pointers_dev = (hipblasDoubleComplex* const*) thrust::raw_pointer_cast(matrix_pointers_dev_.data());
+  hipblasDoubleComplex* const* const_matrix_inverse_pointers_dev = (hipblasDoubleComplex* const*) thrust::raw_pointer_cast(matrix_inverse_pointers_dev_.data());
+  HIPBLAS_CHECK(hipblasZgetriBatched(hipblas_handle_, n_, const_matrix_pointers_dev,
                        lda, ipiv, const_matrix_inverse_pointers_dev,
-                       ldc, info_dev_, num_batches_);
+                       ldc, thrust::raw_pointer_cast(info_dev_.data()), num_batches_));
 }
 
 
@@ -134,7 +195,7 @@ int hipblas_manager<T>::factor_invert(int num_batches, int n, T* values) {
     }
   }
   if(need_tx) {
-    hipMemcpy(matrix_pointers_dev_, data_ptrs_.data(), sizeof(T*)*num_batches_, hipMemcpyHostToDevice);
+    hipMemcpy(thrust::raw_pointer_cast(matrix_pointers_dev_.data()), data_ptrs_.data(), sizeof(T*)*num_batches_, hipMemcpyHostToDevice);
   }
 
   this->getrf_batched();
@@ -143,7 +204,7 @@ int hipblas_manager<T>::factor_invert(int num_batches, int n, T* values) {
   int ierr = 0;
 #ifdef ZERORK_FULL_DEBUG
   info_.resize(num_batches_);
-  gpu_err_check(hipMemcpy(info_.data(), info_dev_, num_batches_*sizeof(int), hipMemcpyDeviceToHost));
+  gpu_err_check(hipMemcpy(info_.data(), thrust::raw_pointer_cast(info_dev_.data()), num_batches_*sizeof(int), hipMemcpyDeviceToHost));
   //Check for errors
   // factor_error > 0, singular matrix, zero diagonal at row,col = factor_error
   // factor_error = 0, success
@@ -179,7 +240,7 @@ int hipblas_manager<T>::factor_lu(int num_batches, int n, T* values) {
     }
   }
   if(need_tx) {
-    hipMemcpy(matrix_pointers_dev_, data_ptrs_.data(), sizeof(T*)*num_batches_, hipMemcpyHostToDevice);
+    hipMemcpy(thrust::raw_pointer_cast(matrix_pointers_dev_.data()), data_ptrs_.data(), sizeof(T*)*num_batches_, hipMemcpyHostToDevice);
   }
 
   this->getrf_batched();
@@ -187,7 +248,7 @@ int hipblas_manager<T>::factor_lu(int num_batches, int n, T* values) {
   int ierr = 0;
 #ifdef ZERORK_FULL_DEBUG
   info_.resize(num_batches_);
-  gpu_err_check(hipMemcpy(info_.data(), info_dev_, num_batches_*sizeof(int), hipMemcpyDeviceToHost));
+  gpu_err_check(hipMemcpy(info_.data(), thrust::raw_pointer_cast(info_dev_.data()), num_batches_*sizeof(int), hipMemcpyDeviceToHost));
   //Check for errors
   // factor_error > 0, singular matrix, zero diagonal at row,col = factor_error
   // factor_error = 0, success
@@ -332,37 +393,37 @@ int hipblas_manager<T>::solve_invert(int num_batches, int n, const T* rhs, T* so
   this->gpu_transpose(soln,rhs,num_batches_,n_);
 
   // Block-diagonal matrix vector multiplication
-  this->gpu_bdmv(n_, num_batches_, matrix_inverse_dev_, soln, tmp_dev_);
+  this->gpu_bdmv(n_, num_batches_, thrust::raw_pointer_cast(matrix_inverse_dev_.data()), soln, thrust::raw_pointer_cast(tmp_dev_.data()));
 
   // Put tmp back into block order
-  this->gpu_transpose(soln,tmp_dev_,n_,num_batches_);
+  this->gpu_transpose(soln,thrust::raw_pointer_cast(tmp_dev_.data()),n_,num_batches_);
 
   return(0);
 }
 
 template<>
 void hipblas_manager<double>::getrs_batched() {
-  int* ipiv = NULL; //Turns off pivoting
   int lda = n_;
   int ldb = n_;
   int info = 0;
-  double* const* const_matrix_pointers_dev = (double* const*) matrix_pointers_dev_;
-  hipblasDgetrsBatched(hipblas_handle_, HIPBLAS_OP_N, n_, 1,
+  int* ipiv = thrust::raw_pointer_cast(ipiv_dev_.data());
+  double* const* const_matrix_pointers_dev = (double* const*) thrust::raw_pointer_cast(matrix_pointers_dev_.data());
+  HIPBLAS_CHECK(hipblasDgetrsBatched(hipblas_handle_, HIPBLAS_OP_N, n_, 1,
                        const_matrix_pointers_dev, lda,
-                       ipiv, tmp_pointers_dev_, ldb, &info, num_batches_);
+                       ipiv, thrust::raw_pointer_cast(tmp_pointers_dev_.data()), ldb, &info, num_batches_));
 }
 
 template<>
 void hipblas_manager<hipDoubleComplex>::getrs_batched() {
-  int* ipiv = NULL; //Turns off pivoting
   int lda = n_;
   int ldb = n_;
   int info = 0;
-  hipblasDoubleComplex* const* const_matrix_pointers_dev = (hipblasDoubleComplex* const*) matrix_pointers_dev_;
-  hipblasDoubleComplex* const* const_tmp_pointers_dev = (hipblasDoubleComplex* const*) tmp_pointers_dev_;
-  hipblasZgetrsBatched(hipblas_handle_, HIPBLAS_OP_N, n_, 1,
+  int* ipiv = thrust::raw_pointer_cast(ipiv_dev_.data());
+  hipblasDoubleComplex* const* const_matrix_pointers_dev = (hipblasDoubleComplex* const*) thrust::raw_pointer_cast(matrix_pointers_dev_.data());
+  hipblasDoubleComplex* const* const_tmp_pointers_dev = (hipblasDoubleComplex* const*) thrust::raw_pointer_cast(tmp_pointers_dev_.data());
+  HIPBLAS_CHECK(hipblasZgetrsBatched(hipblas_handle_, HIPBLAS_OP_N, n_, 1,
                        const_matrix_pointers_dev, lda,
-                       ipiv, const_tmp_pointers_dev, ldb, &info, num_batches_);
+                       ipiv, const_tmp_pointers_dev, ldb, &info, num_batches_));
 }
 
 template<typename T>
@@ -372,13 +433,13 @@ int hipblas_manager<T>::solve_lu(int num_batches, int n, const T* rhs, T* soln) 
   }
 
   // Transpose rhs into tmp_dev_
-  this->gpu_transpose(tmp_dev_,rhs,num_batches_,n_);
+  this->gpu_transpose(thrust::raw_pointer_cast(tmp_dev_.data()),rhs,num_batches_,n_);
 
   // HIPBLAS forward and back substitution
   this->getrs_batched();
 
   // Put tmp back into block order
-  this->gpu_transpose(soln,tmp_dev_,n_,num_batches_);
+  this->gpu_transpose(soln,thrust::raw_pointer_cast(tmp_dev_.data()),n_,num_batches_);
 
   return(0);
 }

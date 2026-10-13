@@ -1,3 +1,4 @@
+#include <cassert>
 #include "hip/hip_runtime.h"
 #include "hipsolver_rf_manager.h"
 #include "../../gpu_err_check.h"

@@ -43,11 +43,11 @@ add_library(zerork_cuda element.cpp species.cpp mechanism.cpp utilities.cpp
             fast_exps.cpp plog_reaction.cpp
             non_integer_reaction_network.cpp constants_api.cpp
             elemental_composition.cpp impls/elemental_composition_impl.cpp
-            zerork_cuda_defs.hip nasa_poly_cuda.hip nasa_poly_kernels.hip
-            rate_const_cuda.hip rate_const_kernels.hip
-            perf_net_cuda.hip perf_net_kernels.hip
-            mechanism_cuda.hip mechanism_kernels.hip
-            scatter_add_kernels.hip misc_kernels.hip)
+            zerork_cuda_defs.cpp nasa_poly_cuda.cpp nasa_poly_kernels.cpp
+            rate_const_cuda.cpp rate_const_kernels.cpp
+            perf_net_cuda.cpp perf_net_kernels.cpp
+            mechanism_cuda.cpp mechanism_kernels.cpp
+            scatter_add_kernels.cpp misc_kernels.cpp)
 
 target_include_directories(zerork_cuda PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
                                               $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../>

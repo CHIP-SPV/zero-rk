@@ -7,7 +7,8 @@
 template<typename T>
 hip_la_manager<T>::hip_la_manager() 
  :
-   use_lu_(false)
+   use_lu_(false),
+   pivoting_(false)
 {
 };
 
