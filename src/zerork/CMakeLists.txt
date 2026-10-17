@@ -38,6 +38,7 @@ install(TARGETS zerork
  PUBLIC_HEADER DESTINATION include/zerork)
 
 if(ENABLE_GPU)
+find_package(rocthrust CONFIG REQUIRED)
 add_library(zerork_cuda element.cpp species.cpp mechanism.cpp utilities.cpp
             nasa_poly.cpp info_net.cpp rate_const.cpp perf_net.cpp
             fast_exps.cpp plog_reaction.cpp
@@ -52,9 +53,7 @@ add_library(zerork_cuda element.cpp species.cpp mechanism.cpp utilities.cpp
 target_include_directories(zerork_cuda PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
                                               $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../>
                                               $<INSTALL_INTERFACE:include>
-                                              $<BUILD_INTERFACE:/space/pvelesko/install/HIP/rocThrust/main/include>
-                                       PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-                                               /space/pvelesko/install/HIP/rocPRIM/2025.04.22/include)
+                                       PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
 
 set(public_headers_cuda atomicMassDB.h constants.h
    constants_api.h zerork_cuda_defs.h element.h
@@ -66,7 +65,7 @@ set(public_headers_cuda atomicMassDB.h constants.h
    perf_net_cuda.h perf_net_kernels.h plog_reaction.h
    rate_const.h rate_const_cuda.h rate_const_kernels.h
    scatter_add_kernels.h species.h utilities.h)
-target_link_libraries(zerork_cuda PUBLIC ckconverter)
+target_link_libraries(zerork_cuda PUBLIC ckconverter roc::rocthrust)
 if(NOT WIN32)
 target_link_libraries(zerork_cuda PUBLIC dl m)
 endif()
