@@ -74,8 +74,8 @@ void ReactorConstantPressureGPU::InitializeState(
   initial_temperatures_dev_ = zerork::device_vector<double>(T, T+n_reactors);
   if(solve_temperature_) {
     const double inv_reference_temperature = 1.0/double_options_["reference_temperature"];
-    double *tmp3_ptr = N_VGetDeviceArrayPointer_Hip(tmp3_);
-    double *scaled_temp_ptr = &y_ptr_dev[num_species_*num_reactors_];
+    auto tmp3_ptr = thrust::device_pointer_cast(N_VGetDeviceArrayPointer_Hip(tmp3_));
+    auto scaled_temp_ptr = thrust::device_pointer_cast(&y_ptr_dev[num_species_*num_reactors_]);
     thrust::copy(initial_temperatures_dev_.begin(), initial_temperatures_dev_.end(), tmp3_ptr);
     thrust::transform(tmp3_ptr, tmp3_ptr + num_reactors_,
                       scaled_temp_ptr, thrust::placeholders::_1*inv_reference_temperature);
